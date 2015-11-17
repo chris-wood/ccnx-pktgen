@@ -1,6 +1,8 @@
 # Overview
 
-ccnx-pktgen is a CCNx packet grammar parser and generator. The tool is meant to be a general
+ccnx-pktgen is a CCNx packet grammar parser and generator that converts 
+grammar specifications to raw bytes. It can also be used to quickly create
+packets represented in S-expression form. The tool is meant to be a general
 purpose packet generator for tests and experiments. It is also intended to 
 guide packet format experimentation. 
 
@@ -18,7 +20,7 @@ For example, consider the following grammar:
 
 ~~~
 T_NAME := G_NAME | T_NAME_SEGMENT+
-T_NAME_SEGMENT := G_NAME_SEGMENT
+T_NAME_SEGMENT := G_NAME_SEGMENT | STRING
 ~~~
 
 This says that a TLV of type T_NAME can be either a G_NAME or
@@ -31,10 +33,10 @@ and all terminal generators are prefixed with "G_".
 # CCNx Packet in ABNF
 
 T_NAME := G_NAME | T_NAME_SEGMENT+
-T_NAME_SEGMENT := G_NAME_SEGMENT
+T_NAME_SEGMENT := G_NAME_SEGMENT | STRING
 
 # CCNx Packet in S-Expression Form
 
-NameSegment := String
-Name := (NameSegment)
+NameSegment := "NameSegment" String
+Name := ("Name" NameSegment-1 NameSegment-2 ...)
 
