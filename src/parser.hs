@@ -11,17 +11,13 @@ data TLV = TLV { tlv_type :: Int,
                  tlv_length :: Int,
                  tlv_value :: [Int] } deriving (Show) 
 
--- TODO: want to generalize the toTLV encoding function
-
 data NameComponent = NameComponent {value :: String} deriving (Show)
 instance Encoder NameComponent where
     toTLV (NameComponent value) = TLV {tlv_type=1, tlv_length=1,tlv_value=[1]}
---toTLV (NameComponent nc) = TLV {tlv_type = 1, tlv_length=1, tlv_value=(value nc)}
 
 data Name = Name {components :: [NameComponent]} deriving (Show)
 instance Encoder Name where
     toTLV (Name components) = TLV {tlv_type=1, tlv_length=1,tlv_value=[1]}
---toTLV (Name n) = TLV {tlv_type=1, tlv_length=1, tlv_value=[1]}
 
 gen_name_component :: NameComponent
 gen_name_component = (NameComponent "random_component")
