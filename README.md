@@ -28,9 +28,13 @@ from which actual values can be sampled. By convention, the grammar
 will be written such that all TLV types are prefixed with "T_"
 and all terminal generators are prefixed with "G_".
 
-# CCNx Packet Grammar
+# CCNx Packet in ABNF
 
 T_NAME := G_NAME | T_NAME_SEGMENT+
 T_NAME_SEGMENT := G_NAME_SEGMENT
 
+# CCNx Packet in S-Expression Form
+
+NameSegment := String
+Name := (NameSegment)
 
