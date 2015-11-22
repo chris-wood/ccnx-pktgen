@@ -160,11 +160,13 @@ data Validation = Validation ValidationAlg ValidationPayload deriving(Show)
 
 data Interest = Interest Name | InterestWithPayload Message | SignedInterest Message Validation deriving(Show)
 instance Encoder Interest where
-    toTLV (Interest name) = NestedTLV { tlv_type = (intToType 0), tlv_length = (intToLength blength), tlv_nested_value = bvalue }
+    -- TL type is 1
+    toTLV (Interest name) = NestedTLV { tlv_type = (intToType 1), tlv_length = (intToLength blength), tlv_nested_value = bvalue }
         where
             bvalue = [(toTLV name)]
             blength = (encodingSize name)
-    toTLV (InterestWithPayload (name, payload)) = NestedTLV { tlv_type = (intToType 0), tlv_length = (intToLength blength), tlv_nested_value = bvalue }
+    -- TL type is 1
+    toTLV (InterestWithPayload (name, payload)) = NestedTLV { tlv_type = (intToType 1), tlv_length = (intToLength blength), tlv_nested_value = bvalue }
         where
             bvalue = [(toTLV name), (toTLV payload)]
             blength = (sum [(encodingSize name), (encodingSize payload)])
