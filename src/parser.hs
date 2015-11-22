@@ -6,6 +6,9 @@ import Data.Word
 import Data.ByteString
 import Data.ByteString.Char8
 
+-- TODO: implement gen_name function to read from file
+-- TODO: implement functions to produce streams of packets -- what does that API look like?
+
 class Serializer t where
     serialize :: t -> ByteString
 
@@ -21,6 +24,8 @@ randomBytes n = Prelude.take n (randomByteStream 42 :: [Word8])
 
 data TwoByte = Type Word8 Word8 | Length Word8 Word8 deriving(Show) 
 
+-- TODO: reduce this into a single function... this is silly
+-- TODO: make Type and Length fully-fledged types
 intToType :: Int -> TwoByte
 intToType x = (Type (fromIntegral (x `shiftR` 8)) (fromIntegral x))
 intToLength :: Int -> TwoByte
@@ -174,18 +179,24 @@ instance Encoder Interest where
     encodingSize (Interest name) = 4 + (encodingSize name)
     encodingSize (InterestWithPayload (name, payload)) = 4 + (sum [(encodingSize name), (encodingSize payload)])
 
--- TODO: preparePacket == prependFixedHeader (serialize (toTLV interest))
 instance Packet Interest where
-    preparePacket (Interest name) = Data.ByteString.pack [0 :: Word8]
+    preparePacket (Interest name) = 
+        prependFixedHeader 1 0 (serialize (toTLV (Interest name)))
     preparePacket (InterestWithPayload (name, payload)) = Data.ByteString.pack [0 :: Word8]
 
-data Content = Content Message | SignedContent Message Validation deriving(Show)
+data Content = NamelessContent Payload | Content Message | SignedContent Message Validation deriving(Show)
 instance Encoder Content where
-    toTLV (Content (name, payload)) = NestedTLV { tlv_type = (intToType 0), tlv_length = (intToLength blength), tlv_nested_value = bvalue }
+    toTLV (Content (name, payload)) = NestedTLV { tlv_type = (intToType 2), tlv_length = (intToLength blength), tlv_nested_value = bvalue }
         where
             bvalue = [(toTLV name), (toTLV payload)]
             blength = (sum [(encodingSize name), (encodingSize payload)])
+    toTLV (NamelessContent payload) = NestedTLV { tlv_type = (intToType 2), tlv_length = (intToLength blength), tlv_nested_value = bvalue }
+        where
+            bvalue = [(toTLV payload)]
+            blength = (encodingSize payload)
+
     encodingSize (Content (name, payload)) = 4 + (sum [(encodingSize name), (encodingSize payload)])
+    encodingSize (NamelessContent payload) = 4 + (encodingSize payload)
 
 -- TODO: implement the manifest encoding 
 -- TODO: implement the body of the manifest
@@ -194,7 +205,6 @@ instance Encoder Content where
 gen_interest :: Int -> Interest
 gen_interest nl = Interest (gen_name nl)
 
-
 data FixedHeader = FixedHeader Version PacketType PacketLength deriving(Show)
 
 prependFixedHeader :: Version -> PacketType -> Data.ByteString.ByteString -> Data.ByteString.ByteString
@@ -202,7 +212,7 @@ prependFixedHeader pv pt body =
     let bytes = [(Data.ByteString.singleton pv),
                  (Data.ByteString.singleton pt),
                  (Data.ByteString.pack (intTo2Bytes ((Data.ByteString.length body) + 8))), -- header length is 8 bytes
-                 (Data.ByteString.pack [64,0,0,8]), -- the header length is 8 byets -- no optional headers, yet. 64 is hop limit
+                 (Data.ByteString.pack [255,0,0,8]), -- the header length is 8 byets -- no optional headers, yet. 64 is hop limit
                  body] 
     in
         (Data.ByteString.concat bytes) 
