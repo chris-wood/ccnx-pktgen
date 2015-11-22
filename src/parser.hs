@@ -1,4 +1,5 @@
 import System.IO  
+import System.Random
 import Control.Monad
 import Data.Bits
 import Data.Word
@@ -12,7 +13,12 @@ class Encoder t where
     toTLV :: t -> TLV
     encodingSize :: t -> Int
 
--- TODO: consider making this a type, not data structure
+randomByteStream :: (Random a) => Int -> [a]
+randomByteStream seed = randoms (mkStdGen seed)
+
+randomBytes :: Int -> [Word8]
+randomBytes n = Prelude.take n (randomByteStream 42 :: [Word8])
+
 data TwoByte = Type Word8 Word8 | Length Word8 Word8 deriving(Show) 
 
 intToType :: Int -> TwoByte
@@ -139,9 +145,11 @@ instance Encoder Payload where
 
     encodingSize (Payload bytes) = 4 + (Data.ByteString.length (Data.ByteString.pack bytes))
 
--- TODO: implement a function to generate this payload randomly
 gen_payload :: Int -> Payload
-gen_payload n = Payload [(fromIntegral 1) :: Word8]
+gen_payload n = Payload (randomBytes n)
+
+class Packet t where
+    preparePacket :: t -> Data.ByteString.ByteString
 
 type Message = (Name, Payload)
 
@@ -150,30 +158,57 @@ data ValidationPayload = ValidationPayload [Word8] deriving(Show)
 data ValidationAlg = ValidationAlg ValidationType ValidationDependentData deriving(Show)
 data Validation = Validation ValidationAlg ValidationPayload deriving(Show)
 
-data Interest = Interest Message | SignedInterest Message Validation deriving(Show)
+data Interest = Interest Name | InterestWithPayload Message | SignedInterest Message Validation deriving(Show)
 instance Encoder Interest where
-    toTLV (Interest (name, payload)) = NestedTLV { tlv_type = (intToType 0), tlv_length = (intToLength blength), tlv_nested_value = bvalue }
+    toTLV (Interest name) = NestedTLV { tlv_type = (intToType 0), tlv_length = (intToLength blength), tlv_nested_value = bvalue }
+        where
+            bvalue = [(toTLV name)]
+            blength = (encodingSize name)
+    toTLV (InterestWithPayload (name, payload)) = NestedTLV { tlv_type = (intToType 0), tlv_length = (intToLength blength), tlv_nested_value = bvalue }
         where
             bvalue = [(toTLV name), (toTLV payload)]
             blength = (sum [(encodingSize name), (encodingSize payload)])
-    encodingSize (Interest (name, payload)) = 4 + (sum [(encodingSize name), (encodingSize payload)])
 
--- TODO: implement the content and manifest encoding stuff
+    encodingSize (Interest name) = 4 + (encodingSize name)
+    encodingSize (InterestWithPayload (name, payload)) = 4 + (sum [(encodingSize name), (encodingSize payload)])
+
+-- TODO: preparePacket == prependFixedHeader (serialize (toTLV interest))
+instance Packet Interest where
+    preparePacket (Interest name) = Data.ByteString.pack [0 :: Word8]
+    preparePacket (InterestWithPayload (name, payload)) = Data.ByteString.pack [0 :: Word8]
+
 data Content = Content Message | SignedContent Message Validation deriving(Show)
-data Manifest = Manifest Message | SignedManifest Message Validation deriving(Show)
+instance Encoder Content where
+    toTLV (Content (name, payload)) = NestedTLV { tlv_type = (intToType 0), tlv_length = (intToLength blength), tlv_nested_value = bvalue }
+        where
+            bvalue = [(toTLV name), (toTLV payload)]
+            blength = (sum [(encodingSize name), (encodingSize payload)])
+    encodingSize (Content (name, payload)) = 4 + (sum [(encodingSize name), (encodingSize payload)])
 
-gen_interest :: Int -> Int -> Interest
-gen_interest nl bl = Interest ((gen_name nl), (gen_payload bl))
+-- TODO: implement the manifest encoding 
+-- TODO: implement the body of the manifest
+--data Manifest = Manifest Message | SignedManifest Message Validation deriving(Show)
+
+gen_interest :: Int -> Interest
+gen_interest nl = Interest (gen_name nl)
+
 
 data FixedHeader = FixedHeader Version PacketType PacketLength deriving(Show)
 
--- TODO: implement addFixedHeader function to all TL types (interest, content, manifest)
 prependFixedHeader :: Version -> PacketType -> Data.ByteString.ByteString -> Data.ByteString.ByteString
 prependFixedHeader pv pt body = 
     let bytes = [(Data.ByteString.singleton pv),
                  (Data.ByteString.singleton pt),
-                 (Data.ByteString.pack (intTo2Bytes (Data.ByteString.length body))),
-                 (Data.ByteString.pack [0,0,0,0]), --
+                 (Data.ByteString.pack (intTo2Bytes ((Data.ByteString.length body) + 8))), -- header length is 8 bytes
+                 (Data.ByteString.pack [64,0,0,8]), -- the header length is 8 byets -- no optional headers, yet. 64 is hop limit
                  body] 
     in
         (Data.ByteString.concat bytes) 
+
+-- shorthand IO functions
+bshow :: Data.ByteString.ByteString -> IO ()
+bshow s = (Data.ByteString.Char8.putStrLn s)
+
+bwrite :: Data.ByteString.ByteString -> String -> IO ()
+bwrite s f = (Data.ByteString.writeFile f s)
+
