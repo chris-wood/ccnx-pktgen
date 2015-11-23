@@ -84,7 +84,6 @@ data Name = Name {components :: [NameComponent]} deriving (Show)
 instance Encoder Name where
     toTLV (Name components) = NestedTLV {tlv_type = (intToType 0), tlv_length = (intToLength csize), tlv_nested_value = nvalue }
         where 
-            -- goal: convert each component to a TLV, serialize the TLVs, then append the TLVs
             nvalue = (Prelude.map toTLV components)
             csize = (sum (Prelude.map encodingSize components))
     encodingSize (Name components) = 4 + (sum (Prelude.map encodingSize components))
