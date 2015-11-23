@@ -142,7 +142,7 @@ type KeyName = Name
 
 data Payload = Payload { bytes :: [Word8] } deriving(Show)
 instance Encoder Payload where
-    toTLV (Payload bytes) = RawTLV { tlv_type = (intToType 0), tlv_length = (intToLength blength), tlv_raw_value = bvalue }
+    toTLV (Payload bytes) = RawTLV { tlv_type = (intToType 1), tlv_length = (intToLength blength), tlv_raw_value = bvalue }
         where
             bvalue = (Data.ByteString.pack bytes)
             blength = (Data.ByteString.length bvalue)
@@ -181,14 +181,17 @@ instance Encoder Interest where
 instance Packet Interest where
     preparePacket (Interest name) = 
         prependFixedHeader 1 0 (serialize (toTLV (Interest name)))
-    preparePacket (InterestWithPayload (name, payload)) = Data.ByteString.pack [0 :: Word8]
+    preparePacket (InterestWithPayload (name, payload)) = 
+        prependFixedHeader 1 0 (serialize (toTLV (InterestWithPayload (name, payload))))
 
 data Content = NamelessContent Payload | Content Message | SignedContent Message Validation deriving(Show)
 instance Encoder Content where
+    -- TL type is 2
     toTLV (Content (name, payload)) = NestedTLV { tlv_type = (intToType 2), tlv_length = (intToLength blength), tlv_nested_value = bvalue }
         where
             bvalue = [(toTLV name), (toTLV payload)]
             blength = (sum [(encodingSize name), (encodingSize payload)])
+    -- TL type is 2
     toTLV (NamelessContent payload) = NestedTLV { tlv_type = (intToType 2), tlv_length = (intToLength blength), tlv_nested_value = bvalue }
         where
             bvalue = [(toTLV payload)]
@@ -197,12 +200,19 @@ instance Encoder Content where
     encodingSize (Content (name, payload)) = 4 + (sum [(encodingSize name), (encodingSize payload)])
     encodingSize (NamelessContent payload) = 4 + (encodingSize payload)
 
+instance Packet Content where
+    preparePacket (Content (name, payload)) = 
+        prependFixedHeader 1 1 (serialize (toTLV (Content (name, payload))))
+
 -- TODO: implement the manifest encoding 
 -- TODO: implement the body of the manifest
 --data Manifest = Manifest Message | SignedManifest Message Validation deriving(Show)
 
 gen_interest :: Int -> Interest
 gen_interest nl = Interest (gen_name nl)
+
+gen_content :: Int -> Int -> Content
+gen_content nl pl = Content ((gen_name nl), (gen_payload pl))
 
 data FixedHeader = FixedHeader Version PacketType PacketLength deriving(Show)
 
