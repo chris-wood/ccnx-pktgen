@@ -6,8 +6,10 @@ import Data.Word
 import Data.ByteString
 import Data.ByteString.Char8
 
--- TODO: implement gen_name function to read from file
 -- TODO: implement functions to produce streams of packets -- what does that API look like?
+-- produceInterest (stream parameters where one calls 'take') and produces stream of interests
+-- producerInterest = preparePacket 1 0 (gen_interest (take name_length))
+-- -> list of natural numbers: num1 = 1 : map (+1) num1, call `take n num1`
 
 class Serializer t where
     serialize :: t -> ByteString
@@ -93,6 +95,7 @@ gen_name_component :: NameComponent
 gen_name_component = (NameComponent "random_component")
 
 -- TODO: gen_name should create a random name from a data source
+-- TODO: implement gen_name function to read from file
 inner_gen_name :: [NameComponent] -> Int -> Name
 inner_gen_name nc n = 
     if n <= 1 then 
@@ -102,7 +105,6 @@ inner_gen_name nc n =
 
 gen_name :: Int -> Name
 gen_name n = inner_gen_name [] n
-
 
 -- PACKET FORMAT
 {-
