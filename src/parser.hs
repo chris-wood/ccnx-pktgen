@@ -14,6 +14,7 @@ import SyslogTypes
 
 {-
     Networking example: http://book.realworldhaskell.org/read/sockets-and-syslog.html#sockets.udp.client
+    Crypto: http://stackoverflow.com/questions/20318751/rsa-sign-using-a-privatekey-from-a-file
 -}
 
 -- TODO: implement functions to produce streams of packets -- what does that API look like?
