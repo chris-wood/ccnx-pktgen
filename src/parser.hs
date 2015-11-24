@@ -6,6 +6,16 @@ import Data.Word
 import Data.ByteString
 import Data.ByteString.Char8
 
+-- networking stuff (laying the groundwork for sending right to certain sockets)
+import Network.Socket
+import Network.BSD
+import Data.List
+import SyslogTypes
+
+{-
+    Networking example: http://book.realworldhaskell.org/read/sockets-and-syslog.html#sockets.udp.client
+-}
+
 -- TODO: implement functions to produce streams of packets -- what does that API look like?
 -- produceInterest (stream parameters where one calls 'take') and produces stream of interests
 -- producerInterest = preparePacket 1 0 (gen_interest (take name_length))
