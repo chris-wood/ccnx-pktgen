@@ -236,3 +236,11 @@ bshow s = (Data.ByteString.Char8.putStrLn s)
 bwrite :: Data.ByteString.ByteString -> String -> IO ()
 bwrite s f = (Data.ByteString.writeFile f s)
 
+produceInterests nstream = [ (preparePacket (gen_interest i)) | i <- nstream ]
+
+produceContents :: [(Int, Int)] -> [ByteString]
+produceContents ((n,p):xs) = [ (preparePacket (gen_content n p)) ] ++ (produceContents xs)
+produceContents _ = []
+-- produceContents [(1,2),(1,2)]
+
+
