@@ -10,6 +10,7 @@ import Data.ByteString.Char8
 -- produceInterest (stream parameters where one calls 'take') and produces stream of interests
 -- producerInterest = preparePacket 1 0 (gen_interest (take name_length))
 -- -> list of natural numbers: num1 = 1 : map (+1) num1, call `take n num1`
+-- TODO: still requires random name creation... what's the best way?
 
 class Serializer t where
     serialize :: t -> ByteString
