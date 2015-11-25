@@ -7,8 +7,8 @@ import Data.ByteString
 import Data.ByteString.Char8
 
 -- networking stuff (laying the groundwork for sending right to certain sockets)
-import Network.Socket
-import Network.BSD
+import Network.Socket hiding (send, sendTo, recv, recvFrom)
+import Network.Socket.ByteString
 
 {-
     Networking example: http://book.realworldhaskell.org/read/sockets-and-syslog.html#sockets.udp.client
@@ -252,15 +252,21 @@ produceContents ((n,p):xs) = [ (preparePacket (gen_content n p)) ] ++ (produceCo
 produceContents _ = []
 -- e.g., produceContents [(1,2),(1,2)]
 
-openUdpPipe :: String -- host
-            -> String -- port
-            -> IO Socket -- socket return
-openUdpPipe host port = do
+sendToPipe :: String -- host
+           -> String -- port
+           -> [ByteString]
+           -> IO ()
+sendToPipe host port (bs:xs) = do
     (serveraddr:_) <- getAddrInfo Nothing (Just host) (Just port)
     s <- socket (addrFamily serveraddr) Datagram defaultProtocol
     connect s (addrAddress serveraddr)
-    return s
 
-sendToPipe :: IO Socket 
-           -> [ByteString]
+    print bs
+    send s bs
+    sClose s
+    
+    sendToPipe host port xs -- recurse. this is awful.
+sendToPipe host port [] = return()
+
+-- sendToPipe "127.0.0.1" "9002" [(Data.ByteString.Char8.pack "Hello, World!")]
 
