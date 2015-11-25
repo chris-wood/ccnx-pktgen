@@ -9,8 +9,6 @@ import Data.ByteString.Char8
 -- networking stuff (laying the groundwork for sending right to certain sockets)
 import Network.Socket
 import Network.BSD
-import Data.List
-import SyslogTypes
 
 {-
     Networking example: http://book.realworldhaskell.org/read/sockets-and-syslog.html#sockets.udp.client
@@ -36,12 +34,12 @@ randomByteStream seed = randoms (mkStdGen seed)
 randomBytes :: Int -> [Word8]
 randomBytes n = Prelude.take n (randomByteStream 42 :: [Word8])
 
-data TwoByte = Type Word8 Word8 | Length Word8 Word8 deriving(Show) 
+data TwoByte = TType Word8 Word8 | Length Word8 Word8 deriving(Show) 
 
 -- TODO: reduce this into a single function... this is silly
--- TODO: make Type and Length fully-fledged types
-intToType :: Int -> TwoByte
-intToType x = (Type (fromIntegral (x `shiftR` 8)) (fromIntegral x))
+-- TODO: make TType and Length fully-fledged types
+intToTType :: Int -> TwoByte
+intToTType x = (TType (fromIntegral (x `shiftR` 8)) (fromIntegral x))
 intToLength :: Int -> TwoByte
 intToLength x = (Length (fromIntegral (x `shiftR` 8)) (fromIntegral x))
 intTo2Bytes :: Int -> [Word8]
@@ -58,7 +56,7 @@ data TLV = RawTLV {
             deriving (Show)
 
 instance Serializer TLV where
-    serialize (RawTLV (Type t1 t2) (Length l1 l2) v) = 
+    serialize (RawTLV (TType t1 t2) (Length l1 l2) v) = 
         let bytelist = [(Data.ByteString.singleton t1), 
                         (Data.ByteString.singleton t2), 
                         (Data.ByteString.singleton l1), 
@@ -66,7 +64,7 @@ instance Serializer TLV where
                         v]
         in
         (Data.ByteString.concat bytelist)
-    serialize (NestedTLV (Type t1 t2) (Length l1 l2) v) = 
+    serialize (NestedTLV (TType t1 t2) (Length l1 l2) v) = 
         let bytelist = [(Data.ByteString.singleton t1), 
                         (Data.ByteString.singleton t2), 
                         (Data.ByteString.singleton l1), 
@@ -78,11 +76,11 @@ instance Serializer TLV where
 data NameComponent = NameComponent {value :: String} 
                      | PayloadId {value :: String} deriving (Show)
 instance Encoder NameComponent where
-    toTLV (NameComponent value) = RawTLV { tlv_type = (intToType 1), tlv_length = (intToLength blength), tlv_raw_value = bvalue } 
+    toTLV (NameComponent value) = RawTLV { tlv_type = (intToTType 1), tlv_length = (intToLength blength), tlv_raw_value = bvalue } 
         where 
             bvalue = (Data.ByteString.Char8.pack value)
             blength = (Data.ByteString.length bvalue)
-    toTLV (PayloadId value) = RawTLV {tlv_type = (intToType 2), tlv_length = (intToLength blength), tlv_raw_value = bvalue }
+    toTLV (PayloadId value) = RawTLV {tlv_type = (intToTType 2), tlv_length = (intToLength blength), tlv_raw_value = bvalue }
         where 
             bvalue = (Data.ByteString.Char8.pack value)
             blength = (Data.ByteString.length bvalue)
@@ -96,7 +94,7 @@ instance Encoder NameComponent where
 
 data Name = Name {components :: [NameComponent]} deriving (Show)
 instance Encoder Name where
-    toTLV (Name components) = NestedTLV {tlv_type = (intToType 0), tlv_length = (intToLength csize), tlv_nested_value = nvalue }
+    toTLV (Name components) = NestedTLV {tlv_type = (intToTType 0), tlv_length = (intToLength csize), tlv_nested_value = nvalue }
         where 
             nvalue = (Prelude.map toTLV components)
             csize = (sum (Prelude.map encodingSize components))
@@ -147,7 +145,7 @@ type Version = Word8
 type PacketType = Word8
 type PacketLength = Word16
 type HeaderLength = Word8
-type ValidationType = Word16
+type ValidationTType = Word16
 
 type KeyId = [Word8]
 type Cert = [Word8]
@@ -156,7 +154,7 @@ type KeyName = Name
 
 data Payload = Payload { bytes :: [Word8] } deriving(Show)
 instance Encoder Payload where
-    toTLV (Payload bytes) = RawTLV { tlv_type = (intToType 1), tlv_length = (intToLength blength), tlv_raw_value = bvalue }
+    toTLV (Payload bytes) = RawTLV { tlv_type = (intToTType 1), tlv_length = (intToLength blength), tlv_raw_value = bvalue }
         where
             bvalue = (Data.ByteString.pack bytes)
             blength = (Data.ByteString.length bvalue)
@@ -173,18 +171,18 @@ type Message = (Name, Payload)
 
 data ValidationDependentData = ValidationDependentData KeyId PublicKey Cert KeyName deriving(Show)
 data ValidationPayload = ValidationPayload [Word8] deriving(Show)
-data ValidationAlg = ValidationAlg ValidationType ValidationDependentData deriving(Show)
+data ValidationAlg = ValidationAlg ValidationTType ValidationDependentData deriving(Show)
 data Validation = Validation ValidationAlg ValidationPayload deriving(Show)
 
 data Interest = Interest Name | InterestWithPayload Message | SignedInterest Message Validation deriving(Show)
 instance Encoder Interest where
     -- TL type is 1
-    toTLV (Interest name) = NestedTLV { tlv_type = (intToType 1), tlv_length = (intToLength blength), tlv_nested_value = bvalue }
+    toTLV (Interest name) = NestedTLV { tlv_type = (intToTType 1), tlv_length = (intToLength blength), tlv_nested_value = bvalue }
         where
             bvalue = [(toTLV name)]
             blength = (encodingSize name)
     -- TL type is 1
-    toTLV (InterestWithPayload (name, payload)) = NestedTLV { tlv_type = (intToType 1), tlv_length = (intToLength blength), tlv_nested_value = bvalue }
+    toTLV (InterestWithPayload (name, payload)) = NestedTLV { tlv_type = (intToTType 1), tlv_length = (intToLength blength), tlv_nested_value = bvalue }
         where
             bvalue = [(toTLV name), (toTLV payload)]
             blength = (sum [(encodingSize name), (encodingSize payload)])
@@ -201,12 +199,12 @@ instance Packet Interest where
 data Content = NamelessContent Payload | Content Message | SignedContent Message Validation deriving(Show)
 instance Encoder Content where
     -- TL type is 2
-    toTLV (Content (name, payload)) = NestedTLV { tlv_type = (intToType 2), tlv_length = (intToLength blength), tlv_nested_value = bvalue }
+    toTLV (Content (name, payload)) = NestedTLV { tlv_type = (intToTType 2), tlv_length = (intToLength blength), tlv_nested_value = bvalue }
         where
             bvalue = [(toTLV name), (toTLV payload)]
             blength = (sum [(encodingSize name), (encodingSize payload)])
     -- TL type is 2
-    toTLV (NamelessContent payload) = NestedTLV { tlv_type = (intToType 2), tlv_length = (intToLength blength), tlv_nested_value = bvalue }
+    toTLV (NamelessContent payload) = NestedTLV { tlv_type = (intToTType 2), tlv_length = (intToLength blength), tlv_nested_value = bvalue }
         where
             bvalue = [(toTLV payload)]
             blength = (encodingSize payload)
@@ -252,6 +250,16 @@ produceInterests nstream = [ (preparePacket (gen_interest i)) | i <- nstream ]
 produceContents :: [(Int, Int)] -> [ByteString]
 produceContents ((n,p):xs) = [ (preparePacket (gen_content n p)) ] ++ (produceContents xs)
 produceContents _ = []
--- produceContents [(1,2),(1,2)]
+-- e.g., produceContents [(1,2),(1,2)]
 
+openUdpPipe :: String -- host
+            -> String -- port
+            -> IO Socket -- socket return
+openUdpPipe host port = do
+    (serveraddr:_) <- getAddrInfo Nothing (Just host) (Just port)
+    s <- socket (addrFamily serveraddr) Datagram defaultProtocol
+    connect s (addrAddress serveraddr)
+    return s
+
+-- 
 
