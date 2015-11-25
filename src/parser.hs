@@ -242,7 +242,7 @@ prependFixedHeader pv pt body =
 bshow :: Data.ByteString.ByteString -> IO ()
 bshow s = (Data.ByteString.Char8.putStrLn s)
 
-bwrite :: Data.ByteString.ByteString -> String -> IO ()
+bwrite :: ByteString -> String -> IO ()
 bwrite s f = (Data.ByteString.writeFile f s)
 
 produceInterests nstream = [ (preparePacket (gen_interest i)) | i <- nstream ]
@@ -261,5 +261,6 @@ openUdpPipe host port = do
     connect s (addrAddress serveraddr)
     return s
 
--- 
+sendToPipe :: IO Socket 
+           -> [ByteString]
 
