@@ -1,14 +1,30 @@
+module Parser (
+    produceInterests
+) where
+
 import System.IO  
 import System.Random
-import Control.Monad
+import Control.Monad 
 import Data.Bits
 import Data.Word
 import Data.ByteString
 import Data.ByteString.Char8
 
+--import Crypto.Hash.SHA56
+import Codec.Crypto.RSA (sign, RSAError)
+import Crypto.PubKey.OpenSsh (decodePrivate, OpenSshPrivateKey)
+import Crypto.PubKey.OpenSsh( OpenSshPrivateKey( OpenSshPrivateKeyRsa ) )
+import Crypto.Types.PubKey.RSA (PrivateKey)
+-- import Data.ByteString (ByteString)
+
 -- networking stuff (laying the groundwork for sending right to certain sockets)
 import Network.Socket hiding (send, sendTo, recv, recvFrom)
 import Network.Socket.ByteString
+
+-- TODO: signing example (get it working!)
+-- TODO: TCP connection
+-- TODO: file loading example
+-- TODO: Throughput calculation
 
 {-
     Networking example: http://book.realworldhaskell.org/read/sockets-and-syslog.html#sockets.udp.client
@@ -149,7 +165,7 @@ type ValidationTType = Word16
 
 type KeyId = [Word8]
 type Cert = [Word8]
-type PublicKey = [Word8]
+type PubKey = [Word8]
 type KeyName = Name
 
 data Payload = Payload { bytes :: [Word8] } deriving(Show)
@@ -169,7 +185,7 @@ class Packet t where
 
 type Message = (Name, Payload)
 
-data ValidationDependentData = ValidationDependentData KeyId PublicKey Cert KeyName deriving(Show)
+data ValidationDependentData = ValidationDependentData KeyId PubKey Cert KeyName deriving(Show)
 data ValidationPayload = ValidationPayload [Word8] deriving(Show)
 data ValidationAlg = ValidationAlg ValidationTType ValidationDependentData deriving(Show)
 data Validation = Validation ValidationAlg ValidationPayload deriving(Show)
@@ -268,5 +284,28 @@ sendToPipe host port (bs:xs) = do
     sendToPipe host port xs -- recurse. this is awful.
 sendToPipe host port [] = return()
 
+
+
 -- sendToPipe "127.0.0.1" "9002" [(Data.ByteString.Char8.pack "Hello, World!")]
+
+--loadKeyFromFile :: String -> PrivateKey
+--loadKeyFromFile fname = do 
+--    content <- Data.ByteString.readFile fname
+--    case (decodePrivate content) of 
+--        Right (OpenSshPrivateKeyRsa key) -> key
+--        Right _ -> error "Wrong key type"
+--        Left err -> error err
+
+throwLeft :: Either String OpenSshPrivateKey -> PrivateKey
+throwLeft (Right (OpenSshPrivateKeyRsa k)) = k
+throwLeft (Right _) = error "Wrong key type"
+throwLeft (Left s)  = error $ "Error reading keys: " ++ s
+
+loadKey :: FilePath -> IO PrivateKey
+loadKey p = (throwLeft . decodePrivate) `fmap` Data.ByteString.readFile p
+
+-- call sign key msg here...
+
+
+
 
