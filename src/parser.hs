@@ -44,11 +44,15 @@ class Encoder t where
     toTLV :: t -> TLV
     encodingSize :: t -> Int
 
-randomByteStream :: (Random a) => Int -> [a]
-randomByteStream seed = randoms (mkStdGen seed)
+randomIntStream :: (Random a) => Int -> [a]
+randomIntStream seed = randoms (mkStdGen seed)
 
 randomBytes :: Int -> [Word8]
-randomBytes n = Prelude.take n (randomByteStream 42 :: [Word8])
+randomBytes n = Prelude.take n (randomIntStream 42 :: [Word8])
+
+_modSwap a b = mod b a
+randomInts :: Int -> Int -> Int -> [Int]
+randomInts n low high = Prelude.take n (Prelude.map (+ low) (Prelude.map (_modSwap (high - low)) (randomIntStream 42)))
 
 data TwoByte = TType Word8 Word8 | Length Word8 Word8 deriving(Show) 
 
@@ -262,17 +266,18 @@ bwrite :: ByteString -> String -> IO ()
 bwrite s f = (Data.ByteString.writeFile f s)
 
 produceInterests nstream = [ (preparePacket (gen_interest i)) | i <- nstream ]
+-- produceInterests (randomInts 100 0 10)
 
 produceContents :: [(Int, Int)] -> [ByteString]
 produceContents ((n,p):xs) = [ (preparePacket (gen_content n p)) ] ++ (produceContents xs)
 produceContents _ = []
 -- e.g., produceContents [(1,2),(1,2)]
 
-sendToPipe :: String -- host
+sendToPipeUDP :: String -- host
            -> String -- port
            -> [ByteString]
            -> IO ()
-sendToPipe host port (bs:xs) = do
+sendToPipeUDP host port (bs:xs) = do
     (serveraddr:_) <- getAddrInfo Nothing (Just host) (Just port)
     s <- socket (addrFamily serveraddr) Datagram defaultProtocol
     connect s (addrAddress serveraddr)
@@ -281,10 +286,22 @@ sendToPipe host port (bs:xs) = do
     send s bs
     sClose s
     
-    sendToPipe host port xs -- recurse. this is awful.
-sendToPipe host port [] = return()
+    sendToPipeUDP host port xs -- recurse. this is awful.
+sendToPipeUDP host port [] = return()
 
+sendToPipeTCP :: String 
+                -> String 
+                -> [ByteString]
+                -> IO ()
+sendToPipeTCP host port (bs:xs) = do
+    (serverAddr:_) <- getAddrInfo Nothing (Just host) (Just port)
+    s <- socket (addrFamily serverAddr) Stream defaultProtocol
+    connect s (addrAddress serverAddr)
+    send s bs
+    sClose s
 
+    sendToPipeTCP host port xs
+sendToPipeTCP host port [] = return()
 
 -- sendToPipe "127.0.0.1" "9002" [(Data.ByteString.Char8.pack "Hello, World!")]
 
