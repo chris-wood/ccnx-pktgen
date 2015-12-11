@@ -1,10 +1,11 @@
 module Parser (
     produceInterests
+    , produceContents
 ) where
 
-import System.IO  
+import System.IO
 import System.Random
-import Control.Monad 
+import Control.Monad
 import Data.Bits
 import Data.Word
 import Data.ByteString
@@ -16,10 +17,6 @@ import Crypto.PubKey.OpenSsh (decodePrivate, OpenSshPrivateKey)
 import Crypto.PubKey.OpenSsh( OpenSshPrivateKey( OpenSshPrivateKeyRsa ) )
 import Crypto.Types.PubKey.RSA (PrivateKey)
 -- import Data.ByteString (ByteString)
-
--- networking stuff (laying the groundwork for sending right to certain sockets)
-import Network.Socket hiding (send, sendTo, recv, recvFrom)
-import Network.Socket.ByteString
 
 -- TODO: signing example (get it working!)
 -- TODO: TCP connection
@@ -54,7 +51,7 @@ _modSwap a b = mod b a
 randomInts :: Int -> Int -> Int -> [Int]
 randomInts n low high = Prelude.take n (Prelude.map (+ low) (Prelude.map (_modSwap (high - low)) (randomIntStream 42)))
 
-data TwoByte = TType Word8 Word8 | Length Word8 Word8 deriving(Show) 
+data TwoByte = TType Word8 Word8 | Length Word8 Word8 deriving(Show)
 
 -- TODO: reduce this into a single function... this is silly
 -- TODO: make TType and Length fully-fledged types
@@ -65,47 +62,47 @@ intToLength x = (Length (fromIntegral (x `shiftR` 8)) (fromIntegral x))
 intTo2Bytes :: Int -> [Word8]
 intTo2Bytes x = [(fromIntegral (x `shiftR` 8)), (fromIntegral x)]
 
-data TLV = RawTLV { 
+data TLV = RawTLV {
                 tlv_type :: TwoByte,
                 tlv_length :: TwoByte,
-                tlv_raw_value :: Data.ByteString.ByteString } 
-            | NestedTLV { 
+                tlv_raw_value :: Data.ByteString.ByteString }
+            | NestedTLV {
                 tlv_type :: TwoByte,
                 tlv_length :: TwoByte,
-                tlv_nested_value :: [TLV] } 
+                tlv_nested_value :: [TLV] }
             deriving (Show)
 
 instance Serializer TLV where
-    serialize (RawTLV (TType t1 t2) (Length l1 l2) v) = 
-        let bytelist = [(Data.ByteString.singleton t1), 
-                        (Data.ByteString.singleton t2), 
-                        (Data.ByteString.singleton l1), 
-                        (Data.ByteString.singleton l2), 
+    serialize (RawTLV (TType t1 t2) (Length l1 l2) v) =
+        let bytelist = [(Data.ByteString.singleton t1),
+                        (Data.ByteString.singleton t2),
+                        (Data.ByteString.singleton l1),
+                        (Data.ByteString.singleton l2),
                         v]
         in
         (Data.ByteString.concat bytelist)
-    serialize (NestedTLV (TType t1 t2) (Length l1 l2) v) = 
-        let bytelist = [(Data.ByteString.singleton t1), 
-                        (Data.ByteString.singleton t2), 
-                        (Data.ByteString.singleton l1), 
+    serialize (NestedTLV (TType t1 t2) (Length l1 l2) v) =
+        let bytelist = [(Data.ByteString.singleton t1),
+                        (Data.ByteString.singleton t2),
+                        (Data.ByteString.singleton l1),
                         (Data.ByteString.singleton l2)]
                         ++ (Prelude.map serialize v) -- v :: [TLV], so we need to serialize each and then append it to the list
         in
         (Data.ByteString.concat bytelist)
 
-data NameComponent = NameComponent {value :: String} 
+data NameComponent = NameComponent {value :: String}
                      | PayloadId {value :: String} deriving (Show)
 instance Encoder NameComponent where
-    toTLV (NameComponent value) = RawTLV { tlv_type = (intToTType 1), tlv_length = (intToLength blength), tlv_raw_value = bvalue } 
-        where 
+    toTLV (NameComponent value) = RawTLV { tlv_type = (intToTType 1), tlv_length = (intToLength blength), tlv_raw_value = bvalue }
+        where
             bvalue = (Data.ByteString.Char8.pack value)
             blength = (Data.ByteString.length bvalue)
     toTLV (PayloadId value) = RawTLV {tlv_type = (intToTType 2), tlv_length = (intToLength blength), tlv_raw_value = bvalue }
-        where 
+        where
             bvalue = (Data.ByteString.Char8.pack value)
             blength = (Data.ByteString.length bvalue)
-    
-    encodingSize (NameComponent value) = 4 + (Data.ByteString.length bvalue) 
+
+    encodingSize (NameComponent value) = 4 + (Data.ByteString.length bvalue)
         where
             bvalue = (Data.ByteString.Char8.pack value)
     encodingSize (PayloadId value) = 4 + (Data.ByteString.length bvalue)
@@ -115,7 +112,7 @@ instance Encoder NameComponent where
 data Name = Name {components :: [NameComponent]} deriving (Show)
 instance Encoder Name where
     toTLV (Name components) = NestedTLV {tlv_type = (intToTType 0), tlv_length = (intToLength csize), tlv_nested_value = nvalue }
-        where 
+        where
             nvalue = (Prelude.map toTLV components)
             csize = (sum (Prelude.map encodingSize components))
     encodingSize (Name components) = 4 + (sum (Prelude.map encodingSize components))
@@ -127,10 +124,10 @@ gen_name_component = (NameComponent "random_component")
 -- TODO: gen_name should create a random name from a data source
 -- TODO: implement gen_name function to read from file
 inner_gen_name :: [NameComponent] -> Int -> Name
-inner_gen_name nc n = 
-    if n <= 1 then 
+inner_gen_name nc n =
+    if n <= 1 then
         Name (nc ++ [gen_name_component])
-    else 
+    else
         inner_gen_name (nc ++ [gen_name_component]) (n - 1)
 
 gen_name :: Int -> Name
@@ -211,9 +208,9 @@ instance Encoder Interest where
     encodingSize (InterestWithPayload (name, payload)) = 4 + (sum [(encodingSize name), (encodingSize payload)])
 
 instance Packet Interest where
-    preparePacket (Interest name) = 
+    preparePacket (Interest name) =
         prependFixedHeader 1 0 (serialize (toTLV (Interest name)))
-    preparePacket (InterestWithPayload (name, payload)) = 
+    preparePacket (InterestWithPayload (name, payload)) =
         prependFixedHeader 1 0 (serialize (toTLV (InterestWithPayload (name, payload))))
 
 data Content = NamelessContent Payload | Content Message | SignedContent Message Validation deriving(Show)
@@ -233,10 +230,10 @@ instance Encoder Content where
     encodingSize (NamelessContent payload) = 4 + (encodingSize payload)
 
 instance Packet Content where
-    preparePacket (Content (name, payload)) = 
+    preparePacket (Content (name, payload)) =
         prependFixedHeader 1 1 (serialize (toTLV (Content (name, payload))))
 
--- TODO: implement the manifest encoding 
+-- TODO: implement the manifest encoding
 -- TODO: implement the body of the manifest
 --data Manifest = Manifest Message | SignedManifest Message Validation deriving(Show)
 
@@ -249,22 +246,17 @@ gen_content nl pl = Content ((gen_name nl), (gen_payload pl))
 data FixedHeader = FixedHeader Version PacketType PacketLength deriving(Show)
 
 prependFixedHeader :: Version -> PacketType -> Data.ByteString.ByteString -> Data.ByteString.ByteString
-prependFixedHeader pv pt body = 
+prependFixedHeader pv pt body =
     let bytes = [(Data.ByteString.singleton pv),
                  (Data.ByteString.singleton pt),
                  (Data.ByteString.pack (intTo2Bytes ((Data.ByteString.length body) + 8))), -- header length is 8 bytes
                  (Data.ByteString.pack [255,0,0,8]), -- the header length is 8 byets -- no optional headers, yet. 64 is hop limit
-                 body] 
+                 body]
     in
-        (Data.ByteString.concat bytes) 
+        (Data.ByteString.concat bytes)
 
--- shorthand IO functions
-bshow :: Data.ByteString.ByteString -> IO ()
-bshow s = (Data.ByteString.Char8.putStrLn s)
 
-bwrite :: ByteString -> String -> IO ()
-bwrite s f = (Data.ByteString.writeFile f s)
-
+produceInterests :: [Int] -> [ByteString]
 produceInterests nstream = [ (preparePacket (gen_interest i)) | i <- nstream ]
 -- produceInterests (randomInts 100 0 10)
 
@@ -273,42 +265,10 @@ produceContents ((n,p):xs) = [ (preparePacket (gen_content n p)) ] ++ (produceCo
 produceContents _ = []
 -- e.g., produceContents [(1,2),(1,2)]
 
-sendToPipeUDP :: String -- host
-           -> String -- port
-           -> [ByteString]
-           -> IO ()
-sendToPipeUDP host port (bs:xs) = do
-    (serveraddr:_) <- getAddrInfo Nothing (Just host) (Just port)
-    s <- socket (addrFamily serveraddr) Datagram defaultProtocol
-    connect s (addrAddress serveraddr)
-
-    print bs
-    send s bs
-    sClose s
-    
-    sendToPipeUDP host port xs -- recurse. this is awful.
-sendToPipeUDP host port [] = return()
-
-sendToPipeTCP :: String 
-                -> String 
-                -> [ByteString]
-                -> IO ()
-sendToPipeTCP host port (bs:xs) = do
-    (serverAddr:_) <- getAddrInfo Nothing (Just host) (Just port)
-    s <- socket (addrFamily serverAddr) Stream defaultProtocol
-    connect s (addrAddress serverAddr)
-    send s bs
-    sClose s
-
-    sendToPipeTCP host port xs
-sendToPipeTCP host port [] = return()
-
--- sendToPipe "127.0.0.1" "9002" [(Data.ByteString.Char8.pack "Hello, World!")]
-
 --loadKeyFromFile :: String -> PrivateKey
---loadKeyFromFile fname = do 
+--loadKeyFromFile fname = do
 --    content <- Data.ByteString.readFile fname
---    case (decodePrivate content) of 
+--    case (decodePrivate content) of
 --        Right (OpenSshPrivateKeyRsa key) -> key
 --        Right _ -> error "Wrong key type"
 --        Left err -> error err
@@ -322,7 +282,3 @@ loadKey :: FilePath -> IO PrivateKey
 loadKey p = (throwLeft . decodePrivate) `fmap` Data.ByteString.readFile p
 
 -- call sign key msg here...
-
-
-
-
