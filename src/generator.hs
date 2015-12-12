@@ -19,20 +19,24 @@ bshow s = (Data.ByteString.Char8.putStrLn s)
 bwrite :: String -> ByteString -> IO ()
 bwrite f s = (Data.ByteString.writeFile f s)
 
-bshowList :: String -> Int -> [Data.ByteString.ByteString] -> IO ()
-bshowList f n (b:bs) = do
+bshowList :: String -> String -> Int -> [(ByteString,ByteString)] -> IO ()
+bshowList f1 f2 n ((b1,b2):bs) = do
 --    Data.ByteString.Char8.writeFile (f ++ (show n)) b
-    Data.ByteString.Char8.appendFile f b
-    Data.ByteString.Char8.appendFile f (Data.ByteString.Char8.pack "\n")
-    bshowList f (n + 1) bs
-bshowList f n [] = return ()
+    Data.ByteString.Char8.appendFile f1 b1
+    Data.ByteString.Char8.appendFile f1 (Data.ByteString.Char8.pack "\n")
+    Data.ByteString.Char8.appendFile f2 b2
+    Data.ByteString.Char8.appendFile f2 (Data.ByteString.Char8.pack "\n")
+    bshowList f1 f2 (n + 1) bs
+bshowList f1 f2 n [] = return ()
 
--- runhaskell generator.hs interest_ 100 0 10 
+-- runhaskell generator.hs data 100 0 10
+
 main :: IO ()
 main = do
-    (prefix:num:min:max:_) <- getArgs
-    let interestStream = produceInterests (randomInts (read num) (read min) (read max)) in
-        bshowList prefix 0 interestStream
-    
-    
-
+    (prefix:number:min:max:_) <- getArgs
+    let interestFile = prefix ++ "_int"
+    let contentFile = prefix ++ "_data"
+    let
+        pairs = producePairs (Prelude.zip (randomInts (read number) (read min) (read max)) (randomInts (read number) (read min) (read max)))
+        in
+            bshowList interestFile contentFile 0 pairs
