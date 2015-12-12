@@ -1,11 +1,13 @@
 module Parser (
     produceInterests
     , produceContents
+    , producePairs
 ) where
 
 import System.IO
 import System.Random
 import Control.Monad
+import Data.Text
 import Data.Bits
 import Data.Word
 import Data.ByteString
@@ -18,8 +20,10 @@ import Crypto.PubKey.OpenSsh( OpenSshPrivateKey( OpenSshPrivateKeyRsa ) )
 import Crypto.Types.PubKey.RSA (PrivateKey)
 -- import Data.ByteString (ByteString)
 
+-- TODO: need to create a NameGenerator class
+-- -> use this in the interest and content and pair production functions
+
 -- TODO: signing example (get it working!)
--- TODO: TCP connection
 -- TODO: file loading example
 -- TODO: Throughput calculation
 
@@ -50,6 +54,13 @@ randomBytes n = Prelude.take n (randomIntStream 42 :: [Word8])
 _modSwap a b = mod b a
 randomInts :: Int -> Int -> Int -> [Int]
 randomInts n low high = Prelude.take n (Prelude.map (+ low) (Prelude.map (_modSwap (high - low)) (randomIntStream 42)))
+
+randomString :: (RandomGen t) => t -> Int -> Int -> String
+randomString g low high = let (len, g') = randomR (low, high) g -- randomR returns a new value for the std generator
+                  in Data.Text.unpack (Data.Text.unfoldrN len rand_text (len, g'))
+ where rand_text (0,_) = Nothing
+       rand_text (k,g) = let (c, g') = randomR ('a','z') g
+                         in Just (c, ((k-1), g'))
 
 data TwoByte = TType Word8 Word8 | Length Word8 Word8 deriving(Show)
 
@@ -118,20 +129,23 @@ instance Encoder Name where
     encodingSize (Name components) = 4 + (sum (Prelude.map encodingSize components))
 
 -- TODO: gen_name_component should create a random name component from a file
-gen_name_component :: NameComponent
-gen_name_component = (NameComponent "random_component")
+gen_name_component :: Int -> Int -> NameComponent
+gen_name_component low high = (NameComponent (randomString (mkStdGen 42) low high))
+--gen_single_name_component = (NameComponent (randomString (mkStdGen 42) 1 10))
+gen_single_name_component prng = (NameComponent (randomString prng 1 10))
 
 -- TODO: gen_name should create a random name from a data source
 -- TODO: implement gen_name function to read from file
-inner_gen_name :: [NameComponent] -> Int -> Name
-inner_gen_name nc n =
-    if n <= 1 then
-        Name (nc ++ [gen_name_component])
-    else
-        inner_gen_name (nc ++ [gen_name_component]) (n - 1)
+inner_gen_name :: (RandomGen t) => [NameComponent] -> Int -> t -> Name
+inner_gen_name nc n prng =
+    let (_, prng') = (next prng) in
+        if n <= 1 then
+            Name (nc ++ [gen_single_name_component prng'])
+        else
+            inner_gen_name (nc ++ [gen_single_name_component prng']) (n - 1) prng'
 
-gen_name :: Int -> Name
-gen_name n = inner_gen_name [] n
+gen_name :: (RandomGen t) => Int -> t -> Name
+gen_name n g = inner_gen_name [] n g
 
 -- PACKET FORMAT
 {-
@@ -237,11 +251,11 @@ instance Packet Content where
 -- TODO: implement the body of the manifest
 --data Manifest = Manifest Message | SignedManifest Message Validation deriving(Show)
 
-gen_interest :: Int -> Interest
-gen_interest nl = Interest (gen_name nl)
+gen_interest :: (RandomGen t) => Int -> t ->Interest
+gen_interest nl g = Interest (gen_name nl g)
 
-gen_content :: Int -> Int -> Content
-gen_content nl pl = Content ((gen_name nl), (gen_payload pl))
+gen_content :: (RandomGen t) => Int -> Int -> t -> Content
+gen_content nl pl g = Content ((gen_name nl g), (gen_payload pl))
 
 data FixedHeader = FixedHeader Version PacketType PacketLength deriving(Show)
 
@@ -256,14 +270,27 @@ prependFixedHeader pv pt body =
         (Data.ByteString.concat bytes)
 
 
-produceInterests :: [Int] -> [ByteString]
-produceInterests nstream = [ (preparePacket (gen_interest i)) | i <- nstream ]
+produceInterests :: (RandomGen t) => [Int] -> t -> [ByteString]
+produceInterests (n:ns) g =
+    let (_, g') = (next g) in
+        [ (preparePacket (gen_interest n g)) ] ++ (produceInterests ns g')
+produceInterests [] _ = []
 -- produceInterests (randomInts 100 0 10)
 
-produceContents :: [(Int, Int)] -> [ByteString]
-produceContents ((n,p):xs) = [ (preparePacket (gen_content n p)) ] ++ (produceContents xs)
-produceContents _ = []
+produceContents :: (RandomGen t) => [(Int, Int)] -> t -> [ByteString]
+produceContents ((n,p):xs) g =
+    let (_, g') = (next g) in
+        [ (preparePacket (gen_content n p g)) ] ++ (produceContents xs g')
+produceContents _ _ = []
 -- e.g., produceContents [(1,2),(1,2)]
+
+producePairs :: (RandomGen t) => [(Int, Int)] -> t -> [(ByteString, ByteString)]
+producePairs ((n,p):xs) g =
+    let (_, g') = (next g) in
+        [ ((preparePacket (gen_interest n g)), (preparePacket (gen_content n p g))) ] ++ (producePairs xs g')
+producePairs _ _ = []
+
+--  producePairs (Prelude.zip (randomInts 1 2 3) (randomInts 1 100 400)) (mkStdGen 42)
 
 --loadKeyFromFile :: String -> PrivateKey
 --loadKeyFromFile fname = do
