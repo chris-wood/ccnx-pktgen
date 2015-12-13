@@ -1,3 +1,6 @@
 *.swp
 *.hi
 *.o
+pusher
+receiver
+piper
