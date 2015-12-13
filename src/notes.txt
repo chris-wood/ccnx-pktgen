@@ -1,0 +1,2 @@
+nc listener for multiple packets:
+nc -vv -u -k -l 9002
