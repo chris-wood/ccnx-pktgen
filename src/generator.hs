@@ -23,20 +23,21 @@ bshowList :: String -> String -> Int -> [(ByteString,ByteString)] -> IO ()
 bshowList f1 f2 n ((b1,b2):bs) = do
 --    Data.ByteString.Char8.writeFile (f ++ (show n)) b
     Data.ByteString.Char8.appendFile f1 b1
-    Data.ByteString.Char8.appendFile f1 (Data.ByteString.Char8.pack "\n")
     Data.ByteString.Char8.appendFile f2 b2
-    Data.ByteString.Char8.appendFile f2 (Data.ByteString.Char8.pack "\n")
     bshowList f1 f2 (n + 1) bs
 bshowList f1 f2 n [] = return ()
 
--- runhaskell generator.hs data 100 0 10
+-- runhaskell generator.hs data 42 100 2 10 256 4096
+-- runhaskell generator.hs data 42 1 2 3 10 20
 
 main :: IO ()
 main = do
-    (prefix:number:min:max:_) <- getArgs
+    (prefix:seed:number:nmin:nmax:pmin:pmax:_) <- getArgs
     let interestFile = prefix ++ "_int"
     let contentFile = prefix ++ "_data"
+    let nameLengthStream = (randomInts (read number) (read nmin) (read nmax))
+    let payloadLengthStream = (randomInts (read number) (read pmin) (read pmax))
     let
-        pairs = producePairs (Prelude.zip (randomInts (read number) (read min) (read max)) (randomInts (read number) (read min) (read max)))
+        pairs = producePairs (Prelude.zip nameLengthStream payloadLengthStream ) (mkStdGen (read seed))
         in
             bshowList interestFile contentFile 0 pairs
