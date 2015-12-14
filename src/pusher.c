@@ -64,7 +64,7 @@ main(int argc, char** argv)
         curr->next = tail;
         tail = curr;
 
-        printf("Added entry of length %d\n", numRead + 8);
+        printf("Added entry (interest) of length %d\n", numRead + 8);
     }
 
     Node *head = tail->next;
@@ -75,7 +75,7 @@ main(int argc, char** argv)
     servaddr.sin_addr.s_addr = inet_addr(serverIPAddress);
     servaddr.sin_port = htons(serverPort);
 
-    printf("Starting the piper\n");
+    printf("Starting the packet pusher\n");
 
     int numPackets = 0;
     TimeBlock(stdout, {
@@ -90,13 +90,15 @@ main(int argc, char** argv)
             head = head->next;
             numPackets++;
 
-            bytesReceived = recv(socketfd, serverResponseBuffer, MTU, 0);
-            totalBytesRcvd += bytesReceived;
-            fprintf(stderr, "Received [%d]: \n", bytesReceived);
-            for (int i = 0; i < bytesReceived; i++) {
-                printf("%02x", serverResponseBuffer[i]);
+            if (head == NULL) { // quick test, remove later
+                bytesReceived = recv(socketfd, serverResponseBuffer, MTU, 0);
+                totalBytesRcvd += bytesReceived;
+                fprintf(stderr, "Received [%d]: \n", bytesReceived);
+                for (int i = 0; i < bytesReceived; i++) {
+                    printf("%02x", serverResponseBuffer[i]);
+                }
+                printf("\n");
             }
-            printf("\n");
         }
     });
 
