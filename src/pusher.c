@@ -89,18 +89,20 @@ main(int argc, char** argv)
 
             head = head->next;
             numPackets++;
-
-            if (head == NULL) { // quick test, remove later
-                bytesReceived = recv(socketfd, serverResponseBuffer, MTU, 0);
-                totalBytesRcvd += bytesReceived;
-                fprintf(stderr, "Received [%d]: \n", bytesReceived);
-                for (int i = 0; i < bytesReceived; i++) {
-                    printf("%02x", serverResponseBuffer[i]);
-                }
-                printf("\n");
-            }
         }
     });
+
+    while (numPackets > 0) {
+        bytesReceived = recv(socketfd, serverResponseBuffer, MTU, 0);
+        totalBytesRcvd += bytesReceived;
+        fprintf(stderr, "Received [%d]: \n", bytesReceived);
+        for (int i = 0; i < bytesReceived; i++) {
+            printf("%02x", serverResponseBuffer[i]);
+        }
+        printf("\n");
+
+        numPackets--;
+    }
 
     printf("Total packets: %d\n", numPackets);
     close(socketfd);
