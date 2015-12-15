@@ -295,10 +295,10 @@ main(int argc, char **argv)
         blob *content = _loadContent(&server, name, hash);
         if (content != NULL) {
             printf("Sending [%d]:\n", content->length);
-            for (int i = 0; i < content->length; i++) {
-                printf("%02x", content->bytes[i]);
-            }
-            printf("\n");
+            // for (int i = 0; i < content->length; i++) {
+            //     printf("%02x", content->bytes[i]);
+            // }
+            // printf("\n");
             if (sendto(server.socket, content->bytes, content->length, 0,
             	(struct sockaddr *) &clientAddress, clientlen) < 0) {
                 LogFatal("Error sending content object response\n");
