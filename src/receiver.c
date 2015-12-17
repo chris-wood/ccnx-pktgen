@@ -11,12 +11,13 @@
 #include <errno.h>
 
 #include "util.h"
+#include "parser.h"
 
 struct keyvalue;
 typedef struct keyvalue {
     uint8_t *key;
     size_t keylen;
-    blob *value;
+    Buffer *value;
     struct keyvalue *next;
 } KeyValue;
 
@@ -58,7 +59,7 @@ typedef struct {
 //         }
 //
 //         Node *newNode = (Node *) malloc(sizeof(Node));
-//         newNode->data = (blob *) malloc(sizeof(blob));
+//         newNode->data = (Buffer *) malloc(sizeof(Buffer));
 //         newNode->data->bytes = NULL;
 //         newNode->data->length = 0;
 //
@@ -88,56 +89,6 @@ typedef struct {
 //     }
 // }
 
-static size_t
-_getNameLength(uint8_t *buffer, size_t length)
-{
-    int offset = 6; // 4 for TL, 2 for T of the name
-    uint16_t len = ((uint16_t)(buffer[offset]) << 8) | (uint16_t)(buffer[offset + 1]);
-    return (size_t) len;
-}
-
-static size_t
-_getNameIndex(uint8_t *buffer, size_t length)
-{
-    return 8; // 8 + 4 + 4
-}
-
-static size_t
-_getContentHashIndex(uint8_t *buffer, size_t length) // skip past the name
-{
-    return _getNameIndex(buffer, length) + _getNameLength(buffer, length) + 4;
-}
-
-static size_t
-_getContentHashLength(uint8_t *buffer, size_t length) // skip past the name
-{
-    int offset = _getNameIndex(buffer, length) + _getNameLength(buffer, length) + 2;
-    uint16_t len = ((uint16_t)(buffer[offset]) << 8) | (uint16_t)(buffer[offset + 1]);
-    return (size_t) len;
-}
-
-static blob *
-_readName(uint8_t *buffer, size_t length)
-{
-    size_t len = _getNameLength(buffer, length);
-    blob *b = (blob *) malloc(sizeof(blob));
-    b->bytes = malloc(len);
-    b->length = len;
-    memcpy(b->bytes, buffer + _getNameIndex(buffer, length), len);
-    return b;
-}
-
-static blob *
-_readContentObjectHash(uint8_t *buffer, size_t length)
-{
-    size_t len = _getContentHashLength(buffer, length);
-    blob *b = (blob *) malloc(sizeof(blob));
-    b->bytes = malloc(len);
-    b->length = len;
-    memcpy(b->bytes, buffer + _getContentHashIndex(buffer, length), len);
-    return b;
-}
-
 static void
 _testParsePacket()
 {
@@ -154,21 +105,21 @@ _testParsePacket()
         // get the size
         uint16_t len = ((uint16_t)(header[2]) << 8) | (uint16_t)(header[3]);
 
-        // read the packet into a blob
-        blob *pktBlob = malloc(sizeof(blob));
-        pktBlob->bytes = malloc(len);
-        pktBlob->length = len;
-        int numRead = fread(pktBlob->bytes, 1, len, fp);
+        // read the packet into a Buffer
+        Buffer *pktBuffer = malloc(sizeof(Buffer));
+        pktBuffer->bytes = malloc(len);
+        pktBuffer->length = len;
+        int numRead = fread(pktBuffer->bytes, 1, len, fp);
 
-        blob *name = _readName(pktBlob->bytes, pktBlob->length);
+        Buffer *name = _readName(pktBuffer->bytes, pktBuffer->length);
         for (size_t i = 0; i < name->length; i++) {
             putc(name->bytes[i], stdout);
         }
     }
 }
 
-static blob *
-_loadContent(UDPServer *server, blob *name, blob *hash)
+static Buffer *
+_loadContent(UDPServer *server, Buffer *name, Buffer *hash)
 {
     KeyValue *curr = server->head;
     while (curr != NULL) {
@@ -183,10 +134,10 @@ _loadContent(UDPServer *server, blob *name, blob *hash)
 }
 
 static void
-_displayBlob(blob *blob)
+_displayBuffer(Buffer *Buffer)
 {
-    for (int i = 0; i < blob->length; i++) {
-        putc(blob->bytes[i], stdout);
+    for (int i = 0; i < Buffer->length; i++) {
+        putc(Buffer->bytes[i], stdout);
     }
 }
 
@@ -209,27 +160,27 @@ _loadDataFromFile(UDPServer *server, char *fname)
         }
 
         uint16_t len = ((uint16_t)(header[2]) << 8) | (uint16_t)(header[3]);
-        blob *pktBlob = malloc(sizeof(blob));
-        pktBlob->bytes = malloc(len); // allocate packet header room
-        pktBlob->length = len;
-        memcpy(pktBlob->bytes, header, 8); // move the header into the packet
-        int numRead = fread(pktBlob->bytes + 8, 1, len - 8, fp);
+        Buffer *pktBuffer = malloc(sizeof(Buffer));
+        pktBuffer->bytes = malloc(len); // allocate packet header room
+        pktBuffer->length = len;
+        memcpy(pktBuffer->bytes, header, 8); // move the header into the packet
+        int numRead = fread(pktBuffer->bytes + 8, 1, len - 8, fp);
 
         // Extract the name and hash
-        blob *name = _readName(pktBlob->bytes + 8, len - 8);
-        blob *hash = _readContentObjectHash(pktBlob->bytes + 8, len - 8);
+        Buffer *name = _readName(pktBuffer->bytes + 8, len - 8);
+        Buffer *hash = _readContentObjectHash(pktBuffer->bytes + 8, len - 8);
 
         KeyValue *kv = (KeyValue *) malloc(sizeof(KeyValue));
         kv->key = malloc(name->length);
         memcpy(kv->key, name->bytes, name->length);
         kv->keylen = name->length;
-        kv->value = pktBlob;
+        kv->value = pktBuffer;
 
         printf("Repo addition:");
-        _displayBlob(name);
+        _displayBuffer(name);
         printf("\n");
-        for (int i = 0; i < pktBlob->length; i++) {
-            printf("%02x", pktBlob->bytes[i]);
+        for (int i = 0; i < pktBuffer->length; i++) {
+            printf("%02x", pktBuffer->bytes[i]);
         }
         printf("\n");
 
@@ -288,13 +239,13 @@ main(int argc, char **argv)
 
         // 1. get the name of the packet
         uint16_t len = ((uint16_t)(buffer[2]) << 8) | (uint16_t)(buffer[3]);
-        blob *name = _readName(buffer + 8, len - 8);
-        blob *hash = _readContentObjectHash(buffer + 8, len - 8);
+        Buffer *name = _readName(buffer + 8, len - 8);
+        Buffer *hash = _readContentObjectHash(buffer + 8, len - 8);
 
         // 2) index into the repo to get the packet
-        blob *content = _loadContent(&server, name, hash);
+        Buffer *content = _loadContent(&server, name, hash);
         if (content != NULL) {
-            printf("Sending [%d]:\n", content->length);
+            printf("Sending [%zu]:\n", content->length);
             // for (int i = 0; i < content->length; i++) {
             //     printf("%02x", content->bytes[i]);
             // }
