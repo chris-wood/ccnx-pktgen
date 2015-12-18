@@ -32,6 +32,7 @@ typedef struct PacketTable {
 
 typedef struct PusherOptions {
     bool showUsageStats;
+    bool sleep;
     size_t windowSize;
     PusherMode mode;
     char *fwdIPAddress;
@@ -47,6 +48,7 @@ typedef struct PusherQueueEntry {
 typedef struct Pusher {
     PacketTable *table;
 
+    bool sleep;
     size_t windowSize;
     size_t outstanding;
 
@@ -58,7 +60,7 @@ void
 showUsage()
 {
     printf("Usage: pusher <options> <server IP address> <port> <packet file>\n");
-    printf(" -p       --ping              Stop-and-wait mode\n");
+    printf(" -p       --ping              Stop-and-wait mode (with intermittent sleep)\n");
     printf(" -f       --flood             Flood mode\n");
     printf(" -r       --rusage            Print rusage\n");
     printf(" -w num   --window num        Stop and wait window size\n");
@@ -71,8 +73,8 @@ parseCommandLineOptions(int argc, char **argv)
     static struct option longopts[] = {
             { "ping",       no_argument,        NULL,'p' },
             { "flood",      no_argument,        NULL,'f' },
-            { "outstanding",required_argument,  NULL,'o' },
             { "rusage",     no_argument,        NULL,'r'},
+            { "w",          required_argument,  NULL,'w'},
             { "help",       no_argument,        NULL,'h'},
             { NULL,0,NULL,0}
     };
@@ -83,20 +85,23 @@ parseCommandLineOptions(int argc, char **argv)
     }
 
     PusherOptions *options = malloc(sizeof(PusherOptions));
-    options->windowSize = 10;
+    options->windowSize = 0;
+    options->sleep = false;
 
     int c;
     while (optind < argc) {
-        if ((c = getopt_long(argc, argv, "rphfo:", longopts, NULL)) != -1) {
+        if ((c = getopt_long(argc, argv, "rphfw:", longopts, NULL)) != -1) {
             switch(c) {
                 case 'r':
                     options->showUsageStats = true;
                     break;
                 case 'p':
                     options->mode = PusherMode_Ping;
+                    options->sleep = true;
                     break;
                 case 'f':
                     options->mode = PusherMode_Flood;
+                    options->windowSize = 0;
                     break;
                 case 'w':
                     sscanf(optarg, "%zu", &(options->windowSize));
@@ -150,7 +155,9 @@ buildPacketTableFromFile(char *fileName)
         exit(1);
     }
 
-    printf("Creating the table\n");
+#if DEBUG
+    fprintf(stdout, "Creating the table\n");
+#endif
 
     PacketTable *table = malloc(sizeof(PacketTable));
 
@@ -185,10 +192,12 @@ buildPacketTableFromFile(char *fileName)
         curr->next = tail;
         tail = curr;
         numberOfPackets++;
-
-        printf("Added entry (interest) of length %d\n", numRead + 8);
+#if DEBUG
+        fprintf(stdout, "Added entry (interest) of length %d\n", numRead + 8);
+#endif
     }
     Node *head = tail->next;
+    numberOfPackets--;
 
     // Populate the table and packet stats
     table->numberOfPackets = numberOfPackets;
@@ -220,6 +229,7 @@ initializePusher(PusherOptions *options)
 
     pusher->outstanding = 0;
     pusher->windowSize = options->windowSize;
+    pusher->sleep = options->sleep;
 
     return pusher;
 }
@@ -265,35 +275,38 @@ runPusherPerPacket(Pusher *pusher)
 {
     int bytesReceived = 0;
     int totalBytesRcvd = 0;
+    int numReceived = 0;
     uint8_t serverResponseBuffer[MTU];
 
-    PusherQueueEntry **queue = (PusherQueueEntry **) malloc(sizeof(PusherQueueEntry *) * pusher->windowSize);
-    for (int i = 0; i < pusher->windowSize; i++) {
+    // Ring buffer to store packets that were just sent
+    int queueStart = 0;
+    int queueEnd = pusher->windowSize == 0 ? pusher->table->numberOfPackets : pusher->windowSize;
+    int queueSize = queueEnd + 1;
+
+    PusherQueueEntry **queue = (PusherQueueEntry **) malloc(sizeof(PusherQueueEntry *) * queueSize);
+    for (int i = 0; i < queueSize; i++) {
         queue[i] = (PusherQueueEntry *) malloc(sizeof(PusherQueueEntry));
         queue[i]->number = 0;
         queue[i]->name = NULL;
     }
-    int queueStart = 0;
-    int queueEnd = pusher->windowSize - 1;
-    int queueSize = pusher->windowSize;
+
+    if (pusher->windowSize == 0) {
+        pusher->windowSize = pusher->table->numberOfPackets;
+    }
 
     int packetNumber = 0;
     Buffer *packet = pusher->table->packets[packetNumber];
     PusherStatEntry *stats = pusher->table->stats[packetNumber];
 
     TimeBlockUs(stdout, {
-        while (packetNumber < pusher->table->numberOfPackets) {
+        while (numReceived < pusher->table->numberOfPackets) {
+            while (pusher->outstanding < pusher->windowSize && packetNumber < pusher->table->numberOfPackets) { // 0 window size == flood
+#if DEBUG
+                fprintf(stdout, "Sending %d with %zu bytes\n", packetNumber, packet->length);
+#endif
 
-            // Try to send (fill the pipe)
-            // while (pusher->outstanding < pusher->windowSize) {
-
-            packet = pusher->table->packets[packetNumber];
-            stats = pusher->table->stats[packetNumber];
-
-            // TODO: FIX THE QUEUE MGMT AND MATCHING LOGIC
-
-            while (pusher->outstanding < pusher->windowSize) {
-                printf("Sending %zu bytes\n", packet->length);
+                packet = pusher->table->packets[packetNumber];
+                stats = pusher->table->stats[packetNumber];
 
                 if (sendto(pusher->socketfd, packet->bytes, packet->length, 0,
                     (struct sockaddr *) &pusher->fwdaddr, sizeof(pusher->fwdaddr)) != packet->length) {
@@ -315,6 +328,11 @@ runPusherPerPacket(Pusher *pusher)
                 queueStart = (queueStart + 1) % queueSize;
 
                 packetNumber++;
+
+                // Optionally sleep
+                if (pusher->sleep) {
+                    sleep(1);
+                }
             }
 
             // Try to receive to clear the pipe
@@ -322,11 +340,13 @@ runPusherPerPacket(Pusher *pusher)
                 bytesReceived = recv(pusher->socketfd, serverResponseBuffer, MTU, 0);
                 if (bytesReceived > 0) {
                     totalBytesRcvd += bytesReceived;
+#if DEBUG
                     fprintf(stderr, "Received [%d]: \n", bytesReceived);
-                    // for (int i = 0; i < bytesReceived; i++) {
-                    //     printf("%02x", serverResponseBuffer[i]);
-                    // }
-                    // printf("\n");
+                    for (int i = 0; i < bytesReceived; i++) {
+                        printf("%02x", serverResponseBuffer[i]);
+                    }
+                    printf("\n");
+#endif
 
                     Buffer *name = _readName(serverResponseBuffer + 8, bytesReceived - 8);
                     int requestNumber = 0;
@@ -344,10 +364,13 @@ runPusherPerPacket(Pusher *pusher)
                     stats->receivedTime = getCurrentTimeUs();
                     stats->rtt = stats->receivedTime - stats->sentTime;
 
-                    printf("Packet %d RTT %zu\n", requestNumber, stats->rtt);
+// #if DEBUG
+                    printf("Packet %d RTT %llu\n", requestNumber, stats->rtt);
+// #endif
 
                     pusher->outstanding--;
-                    // queueEnd = (queueEnd + 1) % queueSize;
+                    numReceived++;
+                    queueEnd = (queueEnd + 1) % queueSize;
                 }
             }
         }
@@ -369,7 +392,7 @@ processPusherStats(Pusher *pusher)
         sum += pusher->table->stats[i]->rtt;
     }
     uint64_t averageRtt = (sum / pusher->table->numberOfPackets);
-    printf("Average RTT = %zu\n", averageRtt);
+    printf("Average RTT = %llu\n", averageRtt);
 }
 
 int
