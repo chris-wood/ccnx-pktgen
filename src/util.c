@@ -4,5 +4,5 @@ void
 LogFatal(char *errorMessage)
 {
 	perror(errorMessage);
-	exit(1);
+	exit(EXIT_FAILURE);
 }

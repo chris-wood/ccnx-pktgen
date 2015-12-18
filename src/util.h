@@ -18,11 +18,15 @@
 
 #define DEBUG 0
 
+typedef unsigned char bool;
+#define true 1
+#define false 0
+
 typedef struct timeval TimeValue;
 
 void LogFatal(char *errorMessage);
 
-#define TimeBlock(_out, _block) \
+#define TimeBlockUs(_out, _block) \
     struct timeval start; \
     struct timeval end; \
     struct timeval delta; \
@@ -32,16 +36,22 @@ void LogFatal(char *errorMessage);
     timersub(&end, &start, &delta); \
     fprintf(_out, "%lu\n", (delta.tv_sec * 1000000L) + delta.tv_usec);
 
-// timeval_subtract(&delta, &start, &end); \
-
+// Dynamically sized buffer
 typedef struct {
     uint8_t *bytes;
     size_t length;
-} blob;
+} Buffer;
 
+// TODO: use overlays instead of memcpy everywhere
+typedef struct {
+    size_t offset;
+    size_t length;
+} BufferOverlay;
+
+// general linked list
 struct node;
 typedef struct node {
-    blob *data;
+    Buffer *data;
     struct node *next;
 } Node;
 
