@@ -27,16 +27,19 @@ bshowList f1 f2 n ((b1,b2):bs) = do
     bshowList f1 f2 (n + 1) bs
 bshowList f1 f2 n [] = return ()
 
--- runhaskell generator.hs data 42 100 2 10 256 4096
--- runhaskell generator.hs data 42 1 2 3 10 20
+-- runhaskell generator.hs data 42 100 2 10 1 10 256 4096
+-- runhaskell generator.hs data 42 1 2 3 1 10 10 20
 
 main :: IO ()
 main = do
-    (prefix:seed:number:nmin:nmax:pmin:pmax:_) <- getArgs
+    (prefix:seed:number:nmin:nmax:ncmin:ncmax:pmin:pmax:_) <- getArgs
+
+
+
     let interestFile = prefix ++ "_int"
     let contentFile = prefix ++ "_data"
     let nameLengthStream = (randomInts (read number) (read nmin) (read nmax))
-    let payloadLengthStream = (randomInts (read number) (read pmin) (read pmax))
+    let payloadLengthStream = (randomInts    (read number) (read pmin) (read pmax))
     let
         pairs = producePairs (Prelude.zip nameLengthStream payloadLengthStream ) (mkStdGen (read seed))
         in

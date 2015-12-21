@@ -4,6 +4,7 @@
 #include <string.h>
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <sys/resource.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <getopt.h>
@@ -364,9 +365,9 @@ runPusherPerPacket(Pusher *pusher)
                     stats->receivedTime = getCurrentTimeUs();
                     stats->rtt = stats->receivedTime - stats->sentTime;
 
-// #if DEBUG
-                    printf("Packet %d RTT %llu\n", requestNumber, stats->rtt);
-// #endif
+#if DEBUG
+                    fprintf(stderr, "Packet %d RTT %llu\n", requestNumber, stats->rtt);
+#endif
 
                     pusher->outstanding--;
                     numReceived++;
@@ -376,7 +377,9 @@ runPusherPerPacket(Pusher *pusher)
         }
     });
 
-    printf("Total packets: %zu\n", pusher->table->numberOfPackets);
+#if DEBUG
+    fprintf(stderr, "Total packets: %zu\n", pusher->table->numberOfPackets);
+#endif
 
     close(pusher->socketfd);
 
@@ -384,15 +387,18 @@ runPusherPerPacket(Pusher *pusher)
 }
 
 void
-processPusherStats(Pusher *pusher)
+displayPusherStats(Pusher *pusher)
 {
-    uint64_t sum = 0;
-
     for (int i = 0; i < pusher->table->numberOfPackets; i++) {
-        sum += pusher->table->stats[i]->rtt;
+        printf("%d,%llu\n", i, pusher->table->stats[i]->rtt);
     }
-    uint64_t averageRtt = (sum / pusher->table->numberOfPackets);
-    printf("Average RTT = %llu\n", averageRtt);
+
+    struct rusage r_usage;
+    getrusage(RUSAGE_SELF, &r_usage);
+    printf("# nvcsw=%lu\n", r_usage.ru_nvcsw);
+    printf("# nivcsw=%lu\n", r_usage.ru_nivcsw);
+    printf("# inblock=%lu\n", r_usage.ru_inblock);
+    printf("# outblock=%lu\n", r_usage.ru_oublock);
 }
 
 int
@@ -406,103 +412,5 @@ main(int argc, char** argv)
     Pusher *pusher = initializePusher(options);
     // runPusher(pusher);
     runPusherPerPacket(pusher);
-    processPusherStats(pusher);
-
-    // int socketfd;
-    // struct sockaddr_in servaddr,cliaddr;
-    // char serverResponseBuffer[MTU];
-    // int bytesReceived;
-    // int totalBytesRcvd;
-    //
-    // if (argc != 4) {
-    //     fprintf(stderr, "usage: %s <Server IP Address> <Port> <Packet File Name>\n", argv[0]);
-    //     exit(1);
-    // }
-    //
-    // char *serverIPAddress = argv[1];
-    // int serverPort = atoi(argv[2]);
-    // char *fileName = argv[3];
-    //
-    // FILE *fp = fopen(fileName, "rb");
-    // if (fp == NULL) {
-    //     fprintf(stderr, "Error: could not open the file in 'rb' mode\n");
-    //     exit(1);
-    // }
-    //
-    // printf("Creating the list\n");
-    //
-    // Node *tail = (Node *) malloc(sizeof(Node));
-    // tail->next = NULL;
-    // tail->data = (Buffer *) malloc(sizeof(Buffer));
-    //
-    // uint8_t header[8];
-    // size_t numRead = 1;
-    //
-    // int numberOfPackets = 0;
-    // while (numRead > 0) {
-    //     bzero(header, 8);
-    //     numRead = fread(header, 1, 8, fp);
-    //     if (numRead == 0) {
-    //         break;
-    //     }
-    //
-    //     uint16_t len = ((uint16_t)(header[2]) << 8) | (uint16_t)(header[3]);
-    //     tail->data->bytes = malloc(len); // allocate packet header room
-    //     tail->data->length = len;
-    //     memcpy(tail->data->bytes, header, 8); // move the header into the packet
-    //     int numRead = fread(tail->data->bytes + 8, 1, len - 8, fp);
-    //     if (numRead != (len - 8)) {
-    //         fprintf(stderr, "Error: read the incorrect number of bytes, got %d expected %d\n", numRead, len - 8);
-    //         exit(1);
-    //     }
-    //
-    //     Node *curr = (Node *) malloc(sizeof(Node));
-    //     curr->data = (Buffer *) malloc(sizeof(Buffer));
-    //     curr->next = tail;
-    //     tail = curr;
-    //     numberOfPackets++;
-    //
-    //     printf("Added entry (interest) of length %d\n", numRead + 8);
-    // }
-    //
-    // Node *head = tail->next;
-    //
-    // socketfd = socket(AF_INET, SOCK_DGRAM, 0);
-    // bzero(&servaddr, sizeof(servaddr));
-    // servaddr.sin_family = AF_INET;
-    // servaddr.sin_addr.s_addr = inet_addr(serverIPAddress);
-    // servaddr.sin_port = htons(serverPort);
-    //
-    // printf("Starting the packet pusher\n");
-    //
-    // int numPackets = 0;
-    // TimeBlockUs(stdout, {
-    //
-    //     while (head != NULL) {
-    //         printf("Sending %d bytes\n", head->data->length);
-    //         if (sendto(socketfd, head->data->bytes, head->data->length, 0,
-    //             (struct sockaddr *) &servaddr, sizeof(servaddr)) != head->data->length) {
-    //             LogFatal("send() failed");
-    //         }
-    //
-    //         head = head->next;
-    //     }
-    //
-    //     while (numPackets < numberOfPackets) {
-    //         bytesReceived = recv(socketfd, serverResponseBuffer, MTU, 0);
-    //         totalBytesRcvd += bytesReceived;
-    //         fprintf(stderr, "Received [%d]: \n", bytesReceived);
-    //         for (int i = 0; i < bytesReceived; i++) {
-    //             printf("%02x", serverResponseBuffer[i]);
-    //         }
-    //         printf("\n");
-    //
-    //         numPackets--;
-    //     }
-    // });
-    //
-    // printf("Total packets: %d\n", numPackets);
-    // close(socketfd);
-    //
-    // return EXIT_SUCCESS;
+    displayPusherStats(pusher);
 }
