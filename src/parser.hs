@@ -275,7 +275,7 @@ produceInterests (n:ns) g =
     let (_, g') = (next g) in
         [ (preparePacket (gen_interest n g)) ] ++ (produceInterests ns g')
 produceInterests [] _ = []
--- produceInterests (randomInts 100 0 10)
+-- e.g., produceInterests (randomInts 100 0 10)
 
 produceContents :: (RandomGen t) => [(Int, Int)] -> t -> [ByteString]
 produceContents ((n,p):xs) g =
