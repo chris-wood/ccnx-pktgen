@@ -34,13 +34,12 @@ main :: IO ()
 main = do
     (prefix:seed:number:nmin:nmax:ncmin:ncmax:pmin:pmax:_) <- getArgs
 
-
-
     let interestFile = prefix ++ "_int"
     let contentFile = prefix ++ "_data"
+
     let nameLengthStream = (randomInts (read number) (read nmin) (read nmax))
     let payloadLengthStream = (randomInts    (read number) (read pmin) (read pmax))
     let
-        pairs = producePairs (Prelude.zip nameLengthStream payloadLengthStream ) (mkStdGen (read seed))
+        pairs = producePairs (Prelude.zip nameLengthStream payloadLengthStream) (mkStdGen (read seed))
         in
             bshowList interestFile contentFile 0 pairs
