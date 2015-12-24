@@ -141,17 +141,18 @@ _displayBuffer(Buffer *Buffer)
     }
 }
 
-static void
+static size_t
 _loadDataFromFile(UDPServer *server, char *fname)
 {
     FILE *fp = fopen(fname, "rb");
 
     if (fp == NULL) {
-        return;
+        return 0;
     }
 
     uint8_t header[8];
     size_t numRead = 1;
+    size_t numPackets = 0;
 
     while (numRead > 0) {
         numRead = fread(header, 1, 8, fp);
@@ -186,7 +187,11 @@ _loadDataFromFile(UDPServer *server, char *fname)
 
         kv->next = server->head;
         server->head = kv;
+
+        numPackets++;
     }
+
+    return numPackets;
 }
 
 int
@@ -207,7 +212,7 @@ main(int argc, char **argv)
     server.port = atoi(argv[1]);
 
     // Load the contents of the directory into memory
-    _loadDataFromFile(&server, argv[2]);
+    size_t numPackets = _loadDataFromFile(&server, argv[2]);
 
     if ((server.socket = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
         LogFatal("socket() failed");
@@ -228,14 +233,17 @@ main(int argc, char **argv)
 
     clientlen = sizeof(clientAddress);
     uint8_t buffer[MTU];
-    for (;;) {
+    size_t numReceived = 0;
+    while (numReceived < numPackets) {
         bzero(buffer, MTU);
         numBytesReceived = recvfrom(server.socket, buffer, MTU, 0, (struct sockaddr *) &clientAddress, &clientlen);
         if (numBytesReceived < 0) {
             LogFatal("recvfrom() failed");
-        } else {
-            printf("Received %d bytes\n", numBytesReceived);
         }
+
+#if DEBUG
+        printf("Received %d bytes\n", numBytesReceived);
+#endif
 
         // 1. get the name of the packet
         uint16_t len = ((uint16_t)(buffer[2]) << 8) | (uint16_t)(buffer[3]);
@@ -245,18 +253,22 @@ main(int argc, char **argv)
         // 2) index into the repo to get the packet
         Buffer *content = _loadContent(&server, name, hash);
         if (content != NULL) {
+#if DEBUG
             printf("Sending [%zu]:\n", content->length);
             // for (int i = 0; i < content->length; i++) {
             //     printf("%02x", content->bytes[i]);
             // }
             // printf("\n");
+#endif
             if (sendto(server.socket, content->bytes, content->length, 0,
             	(struct sockaddr *) &clientAddress, clientlen) < 0) {
                 LogFatal("Error sending content object response\n");
             }
         } else {
-            printf("NOT FOUND!?!?!?!\n");
+            LogFatal("Not found.\n");
         }
+
+        numReceived++;
     }
 
     close(server.socket);

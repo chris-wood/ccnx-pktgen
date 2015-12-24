@@ -7,6 +7,7 @@
 #include <sys/resource.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <errno.h>
 #include <getopt.h>
 
 #include "util.h"
@@ -152,12 +153,12 @@ buildPacketTableFromFile(char *fileName)
 {
     FILE *fp = fopen(fileName, "rb");
     if (fp == NULL) {
-        fprintf(stderr, "Error: could not open the file in 'rb' mode\n");
+        fprintf(stderr, "Error could not open %s in 'rb' mode %d \n", fileName, errno);
         exit(1);
     }
 
 #if DEBUG
-    fprintf(stdout, "Creating the table\n");
+    fprintf(stderr, "Creating the table\n");
 #endif
 
     PacketTable *table = malloc(sizeof(PacketTable));
@@ -194,7 +195,7 @@ buildPacketTableFromFile(char *fileName)
         tail = curr;
         numberOfPackets++;
 #if DEBUG
-        fprintf(stdout, "Added entry (interest) of length %d\n", numRead + 8);
+        fprintf(stderr, "Added entry (interest) of length %d\n", numRead + 8);
 #endif
     }
     Node *head = tail->next;
@@ -251,7 +252,7 @@ runPusher(Pusher *pusher)
     int packetNumber = 0;
     uint8_t serverResponseBuffer[MTU];
 
-    TimeBlockUs(stdout, {
+    TimeBlockUs(stderr, {
         while (packetNumber < pusher->table->numberOfPackets) {
             Buffer *packet = pusher->table->packets[packetNumber];
             if (sendto(pusher->socketfd, packet->bytes, packet->length, 0,
@@ -299,11 +300,11 @@ runPusherPerPacket(Pusher *pusher)
     Buffer *packet = pusher->table->packets[packetNumber];
     PusherStatEntry *stats = pusher->table->stats[packetNumber];
 
-    TimeBlockUs(stdout, {
+    TimeBlockUs(stderr, {
         while (numReceived < pusher->table->numberOfPackets) {
             while (pusher->outstanding < pusher->windowSize && packetNumber < pusher->table->numberOfPackets) { // 0 window size == flood
 #if DEBUG
-                fprintf(stdout, "Sending %d with %zu bytes\n", packetNumber, packet->length);
+                fprintf(stderr, "Sending %d with %zu bytes\n", packetNumber, packet->length);
 #endif
 
                 packet = pusher->table->packets[packetNumber];
@@ -341,8 +342,9 @@ runPusherPerPacket(Pusher *pusher)
                 bytesReceived = recv(pusher->socketfd, serverResponseBuffer, MTU, 0);
                 if (bytesReceived > 0) {
                     totalBytesRcvd += bytesReceived;
+
+                    fprintf(stderr, "Pusher received [%d]: \n", bytesReceived);
 #if DEBUG
-                    fprintf(stderr, "Received [%d]: \n", bytesReceived);
                     for (int i = 0; i < bytesReceived; i++) {
                         printf("%02x", serverResponseBuffer[i]);
                     }
@@ -366,7 +368,7 @@ runPusherPerPacket(Pusher *pusher)
                     stats->rtt = stats->receivedTime - stats->sentTime;
 
 #if DEBUG
-                    fprintf(stderr, "Packet %d RTT %llu\n", requestNumber, stats->rtt);
+                    fprintf(stderr, "Pusher packet %d RTT %llu (%d / %lu)\n", requestNumber, stats->rtt, numReceived, pusher->table->numberOfPackets);
 #endif
 
                     pusher->outstanding--;
@@ -378,7 +380,7 @@ runPusherPerPacket(Pusher *pusher)
     });
 
 #if DEBUG
-    fprintf(stderr, "Total packets: %zu\n", pusher->table->numberOfPackets);
+    fprintf(stderr, "Pusher total packets: %zu\n", pusher->table->numberOfPackets);
 #endif
 
     close(pusher->socketfd);
@@ -387,18 +389,20 @@ runPusherPerPacket(Pusher *pusher)
 }
 
 void
-displayPusherStats(Pusher *pusher)
+displayPusherStats(PusherOptions *options, Pusher *pusher)
 {
     for (int i = 0; i < pusher->table->numberOfPackets; i++) {
         printf("%d,%llu\n", i, pusher->table->stats[i]->rtt);
     }
 
-    struct rusage r_usage;
-    getrusage(RUSAGE_SELF, &r_usage);
-    printf("# nvcsw=%lu\n", r_usage.ru_nvcsw);
-    printf("# nivcsw=%lu\n", r_usage.ru_nivcsw);
-    printf("# inblock=%lu\n", r_usage.ru_inblock);
-    printf("# outblock=%lu\n", r_usage.ru_oublock);
+    if (options->showUsageStats) {
+        struct rusage r_usage;
+        getrusage(RUSAGE_SELF, &r_usage);
+        printf("# nvcsw=%lu\n", r_usage.ru_nvcsw);
+        printf("# nivcsw=%lu\n", r_usage.ru_nivcsw);
+        printf("# inblock=%lu\n", r_usage.ru_inblock);
+        printf("# outblock=%lu\n", r_usage.ru_oublock);
+    }
 }
 
 int
@@ -410,7 +414,6 @@ main(int argc, char** argv)
     }
 
     Pusher *pusher = initializePusher(options);
-    // runPusher(pusher);
     runPusherPerPacket(pusher);
-    displayPusherStats(pusher);
+    displayPusherStats(options, pusher);
 }
