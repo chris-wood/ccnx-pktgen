@@ -1,19 +1,31 @@
 files <- list.files(pattern=".out")
 numFiles <- ceiling(sqrt(length(files)))
 
-pdf("plots.pdf")
-par(mfrow = c(numFiles,numFiles))
+#pdf("plots.pdf");
+#par(mfrow = c(1, 1))
 
 for (input in files) {
-  data <- read.csv(input)
+  tryCatch({
+    data <- read.csv(input)
+    
+    id <- data[1];
+    rtt <- data[2];
+    
+    frame <- data.frame(id, rtt);
   
-  id <- data[1];
-  rtt <- data[2];
+    pdf(paste("plot-", input, ".pdf", sep = ""));
+    title <- sprintf("Per-Packet RTT [%s]", input);
+    plot(frame, xlab="Packet ID", ylab="RTT (us)", main=title);
+    dev.off()
   
-  frame <- data.frame(id, rtt);
-  
-  title <- sprintf("Per-Packet RTT [%s]", input);
-  plot(frame, xlab="Packet ID", ylab="RTT (us)", main=title);
-  
-  print(input)
+    #print(input);
+    
+  }, warning = function(w) {
+    # pass
+  }, error = function(e) {
+    # pass
+  }, finally = {
+    # pass
+  });
 } 
+
