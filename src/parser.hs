@@ -23,12 +23,8 @@ import Crypto.Types.PubKey.RSA (PrivateKey)
 -- TODO: need to create a NameGenerator class
 -- -> use this in the interest and content and pair production functions
 
--- TODO: signing example (get it working!)
--- TODO: file loading example
--- TODO: Throughput calculation
 
 {-
-    Networking example: http://book.realworldhaskell.org/read/sockets-and-syslog.html#sockets.udp.client
     Crypto: http://stackoverflow.com/questions/20318751/rsa-sign-using-a-privatekey-from-a-file
 -}
 
