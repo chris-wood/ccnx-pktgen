@@ -1,0 +1,83 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="chrome=1">
+    <title>ccnx-pktgen by chris-wood</title>
+
+    <link rel="stylesheet" href="stylesheets/styles.css">
+    <link rel="stylesheet" href="stylesheets/github-dark.css">
+    <script src="javascripts/scale.fix.js"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+
+    <!--[if lt IE 9]>
+    <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+  </head>
+  <body>
+    <div class="wrapper">
+      <header class="without-description">
+        <h1>ccnx-pktgen</h1>
+        <p></p>
+        <p class="view"><a href="https://github.com/chris-wood/ccnx-pktgen">View the Project on GitHub <small>chris-wood/ccnx-pktgen</small></a></p>
+        <ul>
+          <li><a href="https://github.com/chris-wood/ccnx-pktgen/zipball/master">Download <strong>ZIP File</strong></a></li>
+          <li><a href="https://github.com/chris-wood/ccnx-pktgen/tarball/master">Download <strong>TAR Ball</strong></a></li>
+          <li><a href="https://github.com/chris-wood/ccnx-pktgen">View On <strong>GitHub</strong></a></li>
+        </ul>
+      </header>
+      <section>
+        <h1>
+<a id="overview" class="anchor" href="#overview" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Overview</h1>
+
+<p>ccnx-pktgen is a CCNx packet grammar parser and generator that converts 
+grammar specifications to raw bytes. It can also be used to quickly create
+packets represented in S-expression form. The tool is meant to be a general
+purpose packet generator for tests and experiments. It is also intended to 
+guide packet format experimentation. </p>
+
+<h1>
+<a id="grammar-specification-notes" class="anchor" href="#grammar-specification-notes" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>Grammar Specification Notes</h1>
+
+<p>The current CCNx packet grammar is specified online at:</p>
+
+<p><a href="https://tools.ietf.org/html/draft-irtf-icnrg-ccnxmessages-00#section-3.6.1">https://tools.ietf.org/html/draft-irtf-icnrg-ccnxmessages-00#section-3.6.1</a></p>
+
+<p>The grammar has been extracted and translated to its ABNF representation
+here. The following grammar is used internally within ccnx-pktgen to 
+determine how packets are to be constructed. Terminal values in the grammar
+are mapped to data sources from which values can be randomly generated. 
+For example, consider the following grammar:</p>
+
+<pre><code>T_NAME := G_NAME | T_NAME_SEGMENT+
+T_NAME_SEGMENT := G_NAME_SEGMENT | STRING
+</code></pre>
+
+<p>This says that a TLV of type T_NAME can be either a G_NAME or
+a list of one or more T_NAME_SEGMENTS. The TLV T_NAME_SEGMENT
+is a terminal value. Both G_NAME and G_NAME_SEGMENT are generators
+from which actual values can be sampled. By convention, the grammar
+will be written such that all TLV types are prefixed with "T_"
+and all terminal generators are prefixed with "G_".</p>
+
+<h1>
+<a id="ccnx-packet-in-abnf" class="anchor" href="#ccnx-packet-in-abnf" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>CCNx Packet in ABNF</h1>
+
+<p>T_NAME := G_NAME | T_NAME_SEGMENT+
+T_NAME_SEGMENT := G_NAME_SEGMENT | STRING</p>
+
+<h1>
+<a id="ccnx-packet-in-s-expression-form" class="anchor" href="#ccnx-packet-in-s-expression-form" aria-hidden="true"><span aria-hidden="true" class="octicon octicon-link"></span></a>CCNx Packet in S-Expression Form</h1>
+
+<p>NameSegment := "NameSegment" String
+Name := ("Name" NameSegment-1 NameSegment-2 ...)</p>
+      </section>
+    </div>
+    <footer>
+      <p>Project maintained by <a href="https://github.com/chris-wood">chris-wood</a></p>
+      <p>Hosted on GitHub Pages &mdash; Theme by <a href="https://github.com/orderedlist">orderedlist</a></p>
+    </footer>
+    <!--[if !IE]><script>fixScale(document);</script><![endif]-->
+    
+  </body>
+</html>
