@@ -30,17 +30,8 @@ Packet := ByteString
 
 # Output Formats
 
-ccnx-pktgen is set to packet pairs in the following formats:
-
-1. Raw binary dump: in this case, the output is a pair of files -- one
-containing interests and the other containing content objects -- that 
-are loaded into ccnx-pktpusher (ccnx-fwdharness) and "executed" (i.e., 
-every request is issued and responses are collected.)
-2. TBD
-
-
-<!-- each flow has an outgoing queue -->
-<!-- each flow has a program counter -->
+ccnx-pktgen generates packet pairs of wire-format-encoded packets. 
+These raw buffers can be written to files or used in other ways.
 
 # Static Examples
 
