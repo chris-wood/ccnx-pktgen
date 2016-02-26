@@ -1,7 +1,8 @@
 module Parser (
-    produceInterests
-    , produceContents
-    , producePairs
+    produceInterestPackets
+    , produceInterests
+    --, produceContents
+    --, producePairs
 ) where
 
 import System.IO
@@ -30,7 +31,7 @@ import Crypto.Types.PubKey.RSA (PrivateKey)
 
 -- TODO: implement functions to produce streams of packets -- what does that API look like?
 -- produceInterest (stream parameters where one calls 'take') and produces stream of interests
--- producerInterest = preparePacket 1 0 (gen_interest (take name_length))
+-- producerInterest = preparePacket 1 0 (interest (take name_length))
 -- -> list of natural numbers: num1 = 1 : map (+1) num1, call `take n num1`
 -- TODO: still requires random name creation... what's the best way?
 
@@ -124,24 +125,23 @@ instance Encoder Name where
             csize = (sum (Prelude.map encodingSize components))
     encodingSize (Name components) = 4 + (sum (Prelude.map encodingSize components))
 
--- TODO: gen_name_component should create a random name component from a file
-gen_name_component :: Int -> Int -> NameComponent
-gen_name_component low high = (NameComponent (randomString (mkStdGen 42) low high))
---gen_single_name_component = (NameComponent (randomString (mkStdGen 42) 1 10))
-gen_single_name_component prng = (NameComponent (randomString prng 1 10))
+-- TODO: nameComponent should create a random name component from a file
+nameComponent :: String -> NameComponent
+nameComponent s = NameComponent s
 
--- TODO: gen_name should create a random name from a data source
--- TODO: implement gen_name function to read from file
-inner_gen_name :: (RandomGen t) => [NameComponent] -> Int -> t -> Name
-inner_gen_name nc n prng =
-    let (_, prng') = (next prng) in
-        if n <= 1 then
-            Name (nc ++ [gen_single_name_component prng'])
-        else
-            inner_gen_name (nc ++ [gen_single_name_component prng']) (n - 1) prng'
+-- TODO: name should create a random name from a data source
+-- TODO: implement name function to read from file
+innerGenName :: [NameComponent] -> Int -> [String] -> Maybe Name
+innerGenName nc n (s:xs) 
+        | n == 1 && (Prelude.length xs) == 0 = Just (Name (nc ++ [component]))
+        | n > 1  = innerGenName (nc ++ [component]) (n - 1) xs
+        | otherwise = Nothing
+    where
+        component = nameComponent s 
+innerGenName nc n [] = Nothing
 
-gen_name :: (RandomGen t) => Int -> t -> Name
-gen_name n g = inner_gen_name [] n g
+name :: Int -> [String] -> Maybe Name
+name nl nc = innerGenName [] nl nc
 
 -- PACKET FORMAT
 {-
@@ -247,11 +247,17 @@ instance Packet Content where
 -- TODO: implement the body of the manifest
 --data Manifest = Manifest Message | SignedManifest Message Validation deriving(Show)
 
-gen_interest :: (RandomGen t) => Int -> t ->Interest
-gen_interest nl g = Interest (gen_name nl g)
+interest :: Int -> [String] -> Maybe Interest
+interest n s = 
+    case (name n s) of 
+        Nothing -> Nothing
+        Just (Name nc) -> Just (Interest (Name nc))
 
-gen_content :: (RandomGen t) => Int -> Int -> t -> Content
-gen_content nl pl g = Content ((gen_name nl g), (gen_payload pl))
+content :: Payload -> Int -> [String] -> Maybe Content
+content p nl s = 
+    case (name nl s) of 
+        Nothing -> Nothing
+        Just (Name nc) -> Just (Content ((Name nc), p))
 
 data FixedHeader = FixedHeader Version PacketType PacketLength deriving(Show)
 
@@ -265,26 +271,35 @@ prependFixedHeader pv pt body =
     in
         (Data.ByteString.concat bytes)
 
+produceInterests :: [Int] -> [[String]] -> Maybe [Interest]
+produceInterests (n:xn) (s:xs) =
+    case (interest n s) of 
+        Nothing -> Nothing
+        Just (Interest msg) -> 
+            case (produceInterests xn xs) of
+                Nothing -> Nothing
+                Just b -> Just ([ (Interest msg) ] ++ b)
+produceInterests [] _ = Just []
 
-produceInterests :: (RandomGen t) => [Int] -> t -> [ByteString]
-produceInterests (n:ns) g =
-    let (_, g') = (next g) in
-        [ (preparePacket (gen_interest n g)) ] ++ (produceInterests ns g')
-produceInterests [] _ = []
--- e.g., produceInterests (randomInts 100 0 10)
+produceInterestPackets :: [Int] -> [[String]] -> Maybe [ByteString]
+produceInterestPackets n s = 
+    case (produceInterests n s) of 
+        Nothing -> Nothing
+        Just interests ->
+            Just (Prelude.map preparePacket interests)
 
-produceContents :: (RandomGen t) => [(Int, Int)] -> t -> [ByteString]
-produceContents ((n,p):xs) g =
-    let (_, g') = (next g) in
-        [ (preparePacket (gen_content n p g)) ] ++ (produceContents xs g')
-produceContents _ _ = []
--- e.g., produceContents [(1,2),(1,2)]
-
-producePairs :: (RandomGen t) => [(Int, Int)] -> t -> [(ByteString, ByteString)]
-producePairs ((n,p):xs) g =
-    let (_, g') = (next g) in
-        [ ((preparePacket (gen_interest n g)), (preparePacket (gen_content n p g))) ] ++ (producePairs xs g')
-producePairs _ _ = []
+--produceContents :: (RandomGen t) => [(Int, Int)] -> t -> [ByteString]
+--produceContents ((n,p):xs) g =
+--    let (_, g') = (next g) in
+--        [ (preparePacket (content n p g)) ] ++ (produceContents xs g')
+--produceContents _ _ = []
+---- e.g., produceContents [(1,2),(1,2)]
+--
+--producePairs :: (RandomGen t) => [(Int, Int)] -> t -> [(ByteString, ByteString)]
+--producePairs ((n,p):xs) g =
+--    let (_, g') = (next g) in
+--        [ ((preparePacket (interest n g)), (preparePacket (content n p g))) ] ++ (producePairs xs g')
+--producePairs _ _ = []
 
 --  producePairs (Prelude.zip (randomInts 1 2 3) (randomInts 1 100 400)) (mkStdGen 42)
 
