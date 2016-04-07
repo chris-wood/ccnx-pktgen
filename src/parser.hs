@@ -1,7 +1,8 @@
 module Parser (
     produceInterestPackets
     , produceInterests
-    --, produceContents
+    , produceContents
+    --, produceContentPackets
     --, producePairs
 ) where
 
@@ -14,26 +15,16 @@ import Data.Word
 import Data.ByteString
 import Data.ByteString.Char8
 
+import Generator
+
 --import Crypto.Hash.SHA56
 import Codec.Crypto.RSA (sign, RSAError)
 import Crypto.PubKey.OpenSsh (decodePrivate, OpenSshPrivateKey)
 import Crypto.PubKey.OpenSsh( OpenSshPrivateKey( OpenSshPrivateKeyRsa ) )
 import Crypto.Types.PubKey.RSA (PrivateKey)
--- import Data.ByteString (ByteString)
-
--- TODO: need to create a NameGenerator class
--- -> use this in the interest and content and pair production functions
-
-
 {-
     Crypto: http://stackoverflow.com/questions/20318751/rsa-sign-using-a-privatekey-from-a-file
 -}
-
--- TODO: implement functions to produce streams of packets -- what does that API look like?
--- produceInterest (stream parameters where one calls 'take') and produces stream of interests
--- producerInterest = preparePacket 1 0 (interest (take name_length))
--- -> list of natural numbers: num1 = 1 : map (+1) num1, call `take n num1`
--- TODO: still requires random name creation... what's the best way?
 
 class Serializer t where
     serialize :: t -> ByteString
@@ -41,23 +32,6 @@ class Serializer t where
 class Encoder t where
     toTLV :: t -> TLV
     encodingSize :: t -> Int
-
-randomIntStream :: (Random a) => Int -> [a]
-randomIntStream seed = randoms (mkStdGen seed)
-
-randomBytes :: Int -> [Word8]
-randomBytes n = Prelude.take n (randomIntStream 42 :: [Word8])
-
-_modSwap a b = mod b a
-randomInts :: Int -> Int -> Int -> [Int]
-randomInts n low high = Prelude.take n (Prelude.map (+ low) (Prelude.map (_modSwap (high - low)) (randomIntStream 42)))
-
-randomString :: (RandomGen t) => t -> Int -> Int -> String
-randomString g low high = let (len, g') = randomR (low, high) g -- randomR returns a new value for the std generator
-                  in Data.Text.unpack (Data.Text.unfoldrN len rand_text (len, g'))
- where rand_text (0,_) = Nothing
-       rand_text (k,g) = let (c, g') = randomR ('a','z') g
-                         in Just (c, ((k-1), g'))
 
 data TwoByte = TType Word8 Word8 | Length Word8 Word8 deriving(Show)
 
@@ -125,23 +99,18 @@ instance Encoder Name where
             csize = (sum (Prelude.map encodingSize components))
     encodingSize (Name components) = 4 + (sum (Prelude.map encodingSize components))
 
--- TODO: nameComponent should create a random name component from a file
-nameComponent :: String -> NameComponent
-nameComponent s = NameComponent s
-
 -- TODO: name should create a random name from a data source
 -- TODO: implement name function to read from file
-innerGenName :: [NameComponent] -> Int -> [String] -> Maybe Name
-innerGenName nc n (s:xs) 
-        | n == 1 && (Prelude.length xs) == 0 = Just (Name (nc ++ [component]))
-        | n > 1  = innerGenName (nc ++ [component]) (n - 1) xs
-        | otherwise = Nothing
-    where
-        component = nameComponent s 
-innerGenName nc n [] = Nothing
+innerGenName :: [NameComponent] -> [String] -> Maybe Name
+innerGenName nc (s:xs) = 
+    let 
+        component = NameComponent s
+    in
+        Just (Name (nc ++ [component]))
+innerGenName nc [] = Just (Name nc)
 
-name :: Int -> [String] -> Maybe Name
-name nl nc = innerGenName [] nl nc
+name :: [String] -> Maybe Name
+name nc = Just (Name [ NameComponent s | s <- nc ])
 
 -- PACKET FORMAT
 {-
@@ -160,7 +129,7 @@ name nl nc = innerGenName [] nl nc
                     1                   2                   3
    0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
    +---------------+---------------+---------------+---------------+
-   | CCNx Message TLV                                              /
+   | CCNx NamedPayload TLV                                              /
    +---------------+---------------+---------------+---------------+
    / Optional CCNx ValidationAlgorithm TLV                         /
    +---------------+---------------+---------------+---------------+
@@ -188,20 +157,20 @@ instance Encoder Payload where
 
     encodingSize (Payload bytes) = 4 + (Data.ByteString.length (Data.ByteString.pack bytes))
 
-gen_payload :: Int -> Payload
-gen_payload n = Payload (randomBytes n)
+gen_payload :: Int -> Int -> Payload
+gen_payload n seed = Payload (randomBytes n seed)
 
 class Packet t where
-    preparePacket :: t -> Data.ByteString.ByteString
+    preparePacket :: Maybe t -> Maybe Data.ByteString.ByteString
 
-type Message = (Name, Payload)
+type NamedPayload = (Name, Payload)
 
 data ValidationDependentData = ValidationDependentData KeyId PubKey Cert KeyName deriving(Show)
 data ValidationPayload = ValidationPayload [Word8] deriving(Show)
 data ValidationAlg = ValidationAlg ValidationTType ValidationDependentData deriving(Show)
 data Validation = Validation ValidationAlg ValidationPayload deriving(Show)
 
-data Interest = Interest Name | InterestWithPayload Message | SignedInterest Message Validation deriving(Show)
+data Interest = Interest Name | InterestWithPayload NamedPayload | SignedInterest NamedPayload Validation deriving(Show)
 instance Encoder Interest where
     -- TL type is 1
     toTLV (Interest name) = NestedTLV { tlv_type = (intToTType 1), tlv_length = (intToLength blength), tlv_nested_value = bvalue }
@@ -218,12 +187,17 @@ instance Encoder Interest where
     encodingSize (InterestWithPayload (name, payload)) = 4 + (sum [(encodingSize name), (encodingSize payload)])
 
 instance Packet Interest where
-    preparePacket (Interest name) =
-        prependFixedHeader 1 0 (serialize (toTLV (Interest name)))
-    preparePacket (InterestWithPayload (name, payload)) =
-        prependFixedHeader 1 0 (serialize (toTLV (InterestWithPayload (name, payload))))
+    preparePacket (Just (Interest name)) =
+        Just (prependFixedHeader 1 0 (serialize (toTLV (Interest name))))
+    preparePacket (Just (InterestWithPayload (name, payload))) =
+        Just (prependFixedHeader 1 0 (serialize (toTLV (InterestWithPayload (name, payload)))))
+    preparePacket Nothing = Nothing
 
-data Content = NamelessContent Payload | Content Message | SignedContent Message Validation deriving(Show)
+data Content = NamelessContent Payload 
+               | Content NamedPayload 
+               | SignedContent NamedPayload Validation 
+               deriving (Show)
+
 instance Encoder Content where
     -- TL type is 2
     toTLV (Content (name, payload)) = NestedTLV { tlv_type = (intToTType 2), tlv_length = (intToLength blength), tlv_nested_value = bvalue }
@@ -240,22 +214,23 @@ instance Encoder Content where
     encodingSize (NamelessContent payload) = 4 + (encodingSize payload)
 
 instance Packet Content where
-    preparePacket (Content (name, payload)) =
-        prependFixedHeader 1 1 (serialize (toTLV (Content (name, payload))))
+    preparePacket (Just (Content (name, payload))) =
+        Just (prependFixedHeader 1 1 (serialize (toTLV (Content (name, payload)))))
+    preparePacket Nothing = Nothing
 
 -- TODO: implement the manifest encoding
 -- TODO: implement the body of the manifest
---data Manifest = Manifest Message | SignedManifest Message Validation deriving(Show)
+--data Manifest = Manifest NamedPayload | SignedManifest NamedPayload Validation deriving(Show)
 
-interest :: Int -> [String] -> Maybe Interest
-interest n s = 
-    case (name n s) of 
+interest :: [String] -> Maybe Interest
+interest s =
+    case (name s) of
         Nothing -> Nothing
         Just (Name nc) -> Just (Interest (Name nc))
 
-content :: Payload -> Int -> [String] -> Maybe Content
-content p nl s = 
-    case (name nl s) of 
+content :: Payload -> [String] -> Maybe Content
+content p s =
+    case (name s) of
         Nothing -> Nothing
         Just (Name nc) -> Just (Content ((Name nc), p))
 
@@ -271,30 +246,29 @@ prependFixedHeader pv pt body =
     in
         (Data.ByteString.concat bytes)
 
-produceInterests :: [Int] -> [[String]] -> Maybe [Interest]
-produceInterests (n:xn) (s:xs) =
-    case (interest n s) of 
-        Nothing -> Nothing
-        Just (Interest msg) -> 
-            case (produceInterests xn xs) of
-                Nothing -> Nothing
-                Just b -> Just ([ (Interest msg) ] ++ b)
-produceInterests [] _ = Just []
+produceInterests :: [[String]] -> [Maybe Interest]
+produceInterests (s:xs) = 
+    case (interest s) of
+        Nothing -> []
+        Just (Interest msg) -> [Just (Interest msg)] ++ (produceInterests xs)
+produceInterests [] = []
 
-produceInterestPackets :: [Int] -> [[String]] -> Maybe [ByteString]
-produceInterestPackets n s = 
-    case (produceInterests n s) of 
-        Nothing -> Nothing
-        Just interests ->
-            Just (Prelude.map preparePacket interests)
+produceInterestPackets :: [[String]] -> [Maybe ByteString]
+produceInterestPackets s = preparePacket <$> produceInterests s
 
---produceContents :: (RandomGen t) => [(Int, Int)] -> t -> [ByteString]
---produceContents ((n,p):xs) g =
---    let (_, g') = (next g) in
---        [ (preparePacket (content n p g)) ] ++ (produceContents xs g')
---produceContents _ _ = []
----- e.g., produceContents [(1,2),(1,2)]
---
+produceContents :: [[String]] -> [[Word8]] -> [Maybe Content]
+produceContents (n:ns) (p:ps) =
+    case (content (Payload p) n) of 
+        Nothing -> []
+        Just (Content msg) -> [Just (Content msg)] ++ (produceContents ns ps)
+produceContents [] _ = []
+produceContents _ [] = []
+
+produceContentPackets :: [[String]] -> [[Word8]] -> [Maybe ByteString]
+produceContentPackets n s = preparePacket <$> produceContents n s
+
+
+
 --producePairs :: (RandomGen t) => [(Int, Int)] -> t -> [(ByteString, ByteString)]
 --producePairs ((n,p):xs) g =
 --    let (_, g') = (next g) in

@@ -5,7 +5,6 @@ module Generator (
     , randomStrings
 ) where
 
-import Parser
 import System.Environment
 import System.Random
 import System.IO.Unsafe
