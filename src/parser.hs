@@ -2,8 +2,8 @@ module Parser (
     produceInterestPackets
     , produceInterests
     , produceContents
-    --, produceContentPackets
-    --, producePairs
+    , produceContentPackets
+    , producePacketPairs
 ) where
 
 import System.IO
@@ -99,43 +99,8 @@ instance Encoder Name where
             csize = (sum (Prelude.map encodingSize components))
     encodingSize (Name components) = 4 + (sum (Prelude.map encodingSize components))
 
--- TODO: name should create a random name from a data source
--- TODO: implement name function to read from file
-innerGenName :: [NameComponent] -> [String] -> Maybe Name
-innerGenName nc (s:xs) = 
-    let 
-        component = NameComponent s
-    in
-        Just (Name (nc ++ [component]))
-innerGenName nc [] = Just (Name nc)
-
 name :: [String] -> Maybe Name
 name nc = Just (Name [ NameComponent s | s <- nc ])
-
--- PACKET FORMAT
-{-
-                       1                   2                   3
-   0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
-   +---------------+---------------+---------------+---------------+
-   |    Version    |  PacketType   |         PacketLength          |
-   +---------------+---------------+---------------+---------------+
-   |           PacketType specific fields          | HeaderLength  |
-   +---------------+---------------+---------------+---------------+
-   / Optional Hop-by-hop header TLVs                               /
-   +---------------+---------------+---------------+---------------+
-   / PacketPayload TLVs                                            /
-   +---------------+---------------+---------------+---------------+
-
-                    1                   2                   3
-   0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
-   +---------------+---------------+---------------+---------------+
-   | CCNx NamedPayload TLV                                              /
-   +---------------+---------------+---------------+---------------+
-   / Optional CCNx ValidationAlgorithm TLV                         /
-   +---------------+---------------+---------------+---------------+
-   / Optional CCNx ValidationPayload TLV (ValidationAlg required)  /
-   +---------------+---------------+---------------+---------------+
--}
 
 type Version = Word8
 type PacketType = Word8
@@ -267,14 +232,17 @@ produceContents _ [] = []
 produceContentPackets :: [[String]] -> [[Word8]] -> [Maybe ByteString]
 produceContentPackets n s = preparePacket <$> produceContents n s
 
-
-
---producePairs :: (RandomGen t) => [(Int, Int)] -> t -> [(ByteString, ByteString)]
+producePacketPairs :: [[String]] -> [[Word8]] -> [(Maybe ByteString, Maybe ByteString)]
+producePacketPairs n p = do
+    let interests = produceInterestPackets n
+    let contents = produceContentPackets n p
+        in
+            Prelude.zip interests contents
+        
 --producePairs ((n,p):xs) g =
 --    let (_, g') = (next g) in
 --        [ ((preparePacket (interest n g)), (preparePacket (content n p g))) ] ++ (producePairs xs g')
 --producePairs _ _ = []
-
 --  producePairs (Prelude.zip (randomInts 1 2 3) (randomInts 1 100 400)) (mkStdGen 42)
 
 --loadKeyFromFile :: String -> PrivateKey
