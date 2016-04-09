@@ -135,7 +135,11 @@ data ValidationPayload = ValidationPayload [Word8] deriving(Show)
 data ValidationAlg = ValidationAlg ValidationTType ValidationDependentData deriving(Show)
 data Validation = Validation ValidationAlg ValidationPayload deriving(Show)
 
-data Interest = Interest Name | InterestWithPayload NamedPayload | SignedInterest NamedPayload Validation deriving(Show)
+data Interest = Interest Name 
+                | InterestWithPayload NamedPayload 
+                | SignedInterest NamedPayload Validation 
+                deriving(Show)
+
 instance Encoder Interest where
     -- TL type is 1
     toTLV (Interest name) = NestedTLV { tlv_type = (intToTType 1), tlv_length = (intToLength blength), tlv_nested_value = bvalue }
@@ -183,9 +187,18 @@ instance Packet Content where
         Just (prependFixedHeader 1 1 (serialize (toTLV (Content (name, payload)))))
     preparePacket Nothing = Nothing
 
--- TODO: implement the manifest encoding
--- TODO: implement the body of the manifest
---data Manifest = Manifest NamedPayload | SignedManifest NamedPayload Validation deriving(Show)
+data HashGroupPointer = DataPointer [Word8] 
+                       | ManifestPointer [Word8]
+                       deriving (Show)
+
+data ManifestHashGroup = ManifestHashGroup [HashGroupPointer] deriving (Show)
+
+type ManifestBody = [ManifestHashGroup]
+
+data Manifest = Manifest ManifestBody
+                | NamelessManifest ManifestBody
+                | SignedManifest ManifestBody Validation
+                deriving (Show)
 
 interest :: [String] -> Maybe Interest
 interest s =
@@ -239,11 +252,6 @@ producePacketPairs n p = do
         in
             Prelude.zip interests contents
         
---producePairs ((n,p):xs) g =
---    let (_, g') = (next g) in
---        [ ((preparePacket (interest n g)), (preparePacket (content n p g))) ] ++ (producePairs xs g')
---producePairs _ _ = []
---  producePairs (Prelude.zip (randomInts 1 2 3) (randomInts 1 100 400)) (mkStdGen 42)
 
 --loadKeyFromFile :: String -> PrivateKey
 --loadKeyFromFile fname = do
@@ -261,4 +269,3 @@ throwLeft (Left s)  = error $ "Error reading keys: " ++ s
 loadKey :: FilePath -> IO PrivateKey
 loadKey p = (throwLeft . decodePrivate) `fmap` Data.ByteString.readFile p
 
--- call sign key msg here...
