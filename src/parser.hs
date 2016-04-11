@@ -14,17 +14,9 @@ import Data.Bits
 import Data.Word
 import Data.ByteString
 import Data.ByteString.Char8
+import Data.Digest.Pure.SHA
 
 import Generator
-
---import Crypto.Hash.SHA56
-import Codec.Crypto.RSA (sign, RSAError)
-import Crypto.PubKey.OpenSsh (decodePrivate, OpenSshPrivateKey)
-import Crypto.PubKey.OpenSsh( OpenSshPrivateKey( OpenSshPrivateKeyRsa ) )
-import Crypto.Types.PubKey.RSA (PrivateKey)
-{-
-    Crypto: http://stackoverflow.com/questions/20318751/rsa-sign-using-a-privatekey-from-a-file
--}
 
 class Serializer t where
     serialize :: t -> ByteString
@@ -200,6 +192,9 @@ data Manifest = Manifest ManifestBody
                 | SignedManifest ManifestBody Validation
                 deriving (Show)
 
+--instance Encoder Manifest where
+--    toTLV (Manifest X
+
 interest :: [String] -> Maybe Interest
 interest s =
     case (name s) of
@@ -251,21 +246,4 @@ producePacketPairs n p = do
     let contents = produceContentPackets n p
         in
             Prelude.zip interests contents
-        
-
---loadKeyFromFile :: String -> PrivateKey
---loadKeyFromFile fname = do
---    content <- Data.ByteString.readFile fname
---    case (decodePrivate content) of
---        Right (OpenSshPrivateKeyRsa key) -> key
---        Right _ -> error "Wrong key type"
---        Left err -> error err
-
-throwLeft :: Either String OpenSshPrivateKey -> PrivateKey
-throwLeft (Right (OpenSshPrivateKeyRsa k)) = k
-throwLeft (Right _) = error "Wrong key type"
-throwLeft (Left s)  = error $ "Error reading keys: " ++ s
-
-loadKey :: FilePath -> IO PrivateKey
-loadKey p = (throwLeft . decodePrivate) `fmap` Data.ByteString.readFile p
 
