@@ -127,9 +127,9 @@ data ValidationPayload = ValidationPayload [Word8] deriving(Show)
 data ValidationAlg = ValidationAlg ValidationTType ValidationDependentData deriving(Show)
 data Validation = Validation ValidationAlg ValidationPayload deriving(Show)
 
-data Interest = Interest Name 
-                | InterestWithPayload NamedPayload 
-                | SignedInterest NamedPayload Validation 
+data Interest = Interest Name
+                | InterestWithPayload NamedPayload
+                | SignedInterest NamedPayload Validation
                 deriving(Show)
 
 instance Encoder Interest where
@@ -154,9 +154,9 @@ instance Packet Interest where
         Just (prependFixedHeader 1 0 (serialize (toTLV (InterestWithPayload (name, payload)))))
     preparePacket Nothing = Nothing
 
-data Content = NamelessContent Payload 
-               | Content NamedPayload 
-               | SignedContent NamedPayload Validation 
+data Content = NamelessContent Payload
+               | Content NamedPayload
+               | SignedContent NamedPayload Validation
                deriving (Show)
 
 instance Encoder Content where
@@ -179,7 +179,7 @@ instance Packet Content where
         Just (prependFixedHeader 1 1 (serialize (toTLV (Content (name, payload)))))
     preparePacket Nothing = Nothing
 
-data HashGroupPointer = DataPointer [Word8] 
+data HashGroupPointer = DataPointer [Word8]
                        | ManifestPointer [Word8]
                        deriving (Show)
 
@@ -214,13 +214,13 @@ prependFixedHeader pv pt body =
     let bytes = [(Data.ByteString.singleton pv),
                  (Data.ByteString.singleton pt),
                  (Data.ByteString.pack (intTo2Bytes ((Data.ByteString.length body) + 8))), -- header length is 8 bytes
-                 (Data.ByteString.pack [255,0,0,8]), -- the header length is 8 byets -- no optional headers, yet. 64 is hop limit
+                 (Data.ByteString.pack [255,0,0,8]), -- the header length is 8 bytes; no optional headers, yet. 255 is hop limit.
                  body]
     in
         (Data.ByteString.concat bytes)
 
 produceInterests :: [[String]] -> [Maybe Interest]
-produceInterests (s:xs) = 
+produceInterests (s:xs) =
     case (interest s) of
         Nothing -> []
         Just (Interest msg) -> [Just (Interest msg)] ++ (produceInterests xs)
@@ -231,7 +231,7 @@ produceInterestPackets s = preparePacket <$> produceInterests s
 
 produceContents :: [[String]] -> [[Word8]] -> [Maybe Content]
 produceContents (n:ns) (p:ps) =
-    case (content (Payload p) n) of 
+    case (content (Payload p) n) of
         Nothing -> []
         Just (Content msg) -> [Just (Content msg)] ++ (produceContents ns ps)
 produceContents [] _ = []
@@ -246,4 +246,3 @@ producePacketPairs n p = do
     let contents = produceContentPackets n p
         in
             Prelude.zip interests contents
-
