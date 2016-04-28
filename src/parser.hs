@@ -114,9 +114,6 @@ instance Encoder Payload where
 
     encodingSize (Payload bytes) = 4 + (Data.ByteString.length (Data.ByteString.pack bytes))
 
-gen_payload :: Int -> Int -> Payload
-gen_payload n seed = Payload (randomBytes n seed)
-
 class Packet t where
     preparePacket :: Maybe t -> Maybe Data.ByteString.ByteString
 

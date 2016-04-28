@@ -26,10 +26,11 @@ main = do
             let pmin = read pmin_s
             let pmax = read pmax_s
 
-            -- TODO: this is broken.
-            let nameStream = take number (take (randomInt nmin nmax seed) (randomStrings ncmin ncmax seed))
-            let payloadStream = take number (randomBytes (randomInt pmin pmax seed) seed)
+            let nameStream = randomListOfStringStreams (nmin, nmax) (ncmin, ncmax) number (mkStdGen seed)
+            let payloadStream = randomListOfByteArrays (pmin, pmax) number (mkStdGen seed)
+
+            -- TODO: make a function to create this list of payloads
+            --let payloadStream = Prelude.take number (randomBytes (randomInt (pmin, pmax) (mkStdGen seed)) (mkStdGen seed))
 
             let pairs = producePacketPairs nameStream payloadStream
-            in
-                writeByteStringPairs interestFile contentFile pairs
+                in writeByteStringPairs interestFile contentFile pairs

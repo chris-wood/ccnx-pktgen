@@ -9,7 +9,9 @@ module Generator (
     , randomStringStream
     , randomStreamOfStringStreams
     , randomListOfStringStreams
-    , randomBytes
+    , randomByteArray
+    , randomStreamOfByteArrays
+    , randomListOfByteArrays
 ) where
 
 import System.Environment
@@ -23,8 +25,20 @@ generateRandomIntStream gen = do
     let (a, g) = random gen
         in [a] ++ (generateRandomIntStream g)
 
-randomBytes :: (RandomGen g) => Int -> g -> [Word8]
-randomBytes n gen = take n (generateRandomIntStream gen :: [Word8])
+randomByteArray :: (RandomGen g) => Int -> g -> [Word8]
+randomByteArray n gen = take n (generateRandomIntStream gen :: [Word8])
+
+randomStreamOfByteArrays :: (RandomGen g) => (Int, Int) -> g -> [[Word8]]
+randomStreamOfByteArrays (min, max) gen =
+    let (n, nextGen) = randomInt (min, max) gen
+        in [randomByteArray n gen] ++ (randomStreamOfByteArrays (min, max) nextGen)
+
+randomListOfByteArrays :: (RandomGen g) => (Int, Int) -> Int -> g -> [[Word8]]
+randomListOfByteArrays (min, max) n gen
+    | n == 0 = []
+    | otherwise = do
+        let (n, nextGen) = randomInt (min, max) gen
+            in [randomByteArray n gen] ++ (randomListOfByteArrays (min, max) (n - 1) nextGen)
 
 randomInt :: (RandomGen g) => (Int, Int) -> g -> (Int, g)
 randomInt (min, max) gen = randomR (min, max) gen
