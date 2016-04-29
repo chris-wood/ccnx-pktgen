@@ -8,6 +8,8 @@ import Data.Word
 import Data.ByteString
 import Data.ByteString.Char8
 
+-- runhaskell builder.hs output 100 10 3 5 2 5 256 4096
+
 main :: IO ()
 main = do
     args <- getArgs
@@ -28,9 +30,6 @@ main = do
 
             let nameStream = randomListOfStringStreams (nmin, nmax) (ncmin, ncmax) number (mkStdGen seed)
             let payloadStream = randomListOfByteArrays (pmin, pmax) number (mkStdGen seed)
-
-            -- TODO: make a function to create this list of payloads
-            --let payloadStream = Prelude.take number (randomBytes (randomInt (pmin, pmax) (mkStdGen seed)) (mkStdGen seed))
 
             let pairs = producePacketPairs nameStream payloadStream
                 in writeByteStringPairs interestFile contentFile pairs
