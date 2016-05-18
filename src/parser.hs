@@ -98,7 +98,7 @@ type Version = Word8
 type PacketType = Word8
 type PacketLength = Word16
 type HeaderLength = Word8
-type ValidationTType = Word16
+type VaidationType = Word16
 
 type KeyId = [Word8]
 type Cert = [Word8]
@@ -121,7 +121,7 @@ type NamedPayload = (Name, Payload)
 
 data ValidationDependentData = ValidationDependentData KeyId PubKey Cert KeyName deriving(Show)
 data ValidationPayload = ValidationPayload [Word8] deriving(Show)
-data ValidationAlg = ValidationAlg ValidationTType ValidationDependentData deriving(Show)
+data ValidationAlg = ValidationAlg VaidationType ValidationDependentData deriving(Show)
 data Validation = Validation ValidationAlg ValidationPayload deriving(Show)
 
 data Interest = Interest Name
@@ -180,17 +180,56 @@ data HashGroupPointer = DataPointer [Word8]
                        | ManifestPointer [Word8]
                        deriving (Show)
 
+instance Encoder HashGroupPointer where
+    toTLV (DataPointer bytes) = RawTLV { tlv_type = (intToTType 1), tlv_length = (intToLength blength), tlv_raw_value = bvalue }
+        where
+            bvalue = (Data.ByteString.pack bytes)
+            blength = (Data.ByteString.length bvalue)
+    toTLV (ManifestPointer bytes) = RawTLV { tlv_type = (intToTType 1), tlv_length = (intToLength blength), tlv_raw_value = bvalue }
+        where
+            bvalue = (Data.ByteString.pack bytes)
+            blength = (Data.ByteString.length bvalue)
+
+    encodingSize (DataPointer bytes) = 4 + (Prelude.length bytes)
+    encodingSize (ManifestPointer bytes) = 4 + (Prelude.length bytes)
+
 data ManifestHashGroup = ManifestHashGroup [HashGroupPointer] deriving (Show)
+
+instance Encoder ManifestHashGroup where
+    toTLV (ManifestHashGroup pointers) = NestedTLV { tlv_type = (intToTType 1), tlv_length = (intToLength blength), tlv_nested_value = bvalue }
+        where
+            bvalue = Prelude.map toTLV pointers
+            blength = sum (Prelude.map encodingSize pointers)
+    encodingSize (ManifestHashGroup pointers) = 4 + (sum (Prelude.map encodingSize pointers))
 
 type ManifestBody = [ManifestHashGroup]
 
-data Manifest = Manifest ManifestBody
+data Manifest = Manifest Name ManifestBody
                 | NamelessManifest ManifestBody
-                | SignedManifest ManifestBody Validation
+                | SignedManifest Name ManifestBody Validation
                 deriving (Show)
 
---instance Encoder Manifest where
---    toTLV (Manifest X
+instance Encoder Manifest where
+    toTLV (Manifest name body) = NestedTLV { tlv_type = (intToTType 1), tlv_length = (intToLength blength), tlv_nested_value = bvalue }
+        where
+            bvalue = [(toTLV name)] ++ (Prelude.map toTLV body)
+            blength = sum ([(encodingSize name)] ++ (Prelude.map encodingSize body))
+    toTLV (NamelessManifest body) = NestedTLV { tlv_type = (intToTType 1), tlv_length = (intToLength blength), tlv_nested_value = bvalue }
+        where
+            bvalue = Prelude.map toTLV body
+            blength = sum (Prelude.map encodingSize body)
+-- TODO: implement the validation encoder
+--    toTLV (SignedManifest name body validation)
+
+    encodingSize (Manifest name body) = 4 + (sum ([(encodingSize name)] ++ (Prelude.map encodingSize body)))
+    encodingSize (NamelessManifest body) = 4 + (sum (Prelude.map encodingSize body))
+
+instance Packet Manifest where
+    preparePacket (Just (Manifest name body)) =
+        Just (prependFixedHeader 1 1 (serialize (toTLV (Manifest name body))))
+    preparePacket (Just (NamelessManifest body)) =
+        Just (prependFixedHeader 1 1 (serialize (toTLV (NamelessManifest body))))
+    preparePacket Nothing = Nothing
 
 interest :: [String] -> Maybe Interest
 interest s =

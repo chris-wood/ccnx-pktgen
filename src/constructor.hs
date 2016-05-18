@@ -63,7 +63,5 @@ main = do
                         bshowList interestFile contentFile 0 pairs
             ("repl":_) -> do
                 Prelude.putStrLn "TODO"
-            ("gui":_) -> do
-                Prelude.putStrLn "TODO"
             _ ->
                 usage
