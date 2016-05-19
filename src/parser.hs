@@ -12,9 +12,11 @@ import Control.Monad
 import Data.Text
 import Data.Bits
 import Data.Word
-import Data.ByteString
+import Data.Maybe
 import Data.ByteString.Char8
-import Data.Digest.Pure.SHA
+import qualified Data.ByteString.Lazy.Char8 as Lazy
+import Data.ByteString
+import qualified Data.Digest.Pure.SHA as SHA
 
 import Generator
 
@@ -29,6 +31,7 @@ data TwoByte = TType Word8 Word8 | Length Word8 Word8 deriving(Show)
 
 -- TODO: reduce this into a single function... this is silly
 -- TODO: make TType and Length fully-fledged types
+
 intToTType :: Int -> TwoByte
 intToTType x = (TType (fromIntegral (x `shiftR` 8)) (fromIntegral x))
 intToLength :: Int -> TwoByte
@@ -209,6 +212,8 @@ data Manifest = Manifest Name ManifestBody
                 | SignedManifest Name ManifestBody Validation
                 deriving (Show)
 
+
+
 instance Encoder Manifest where
     toTLV (Manifest name body) = NestedTLV { tlv_type = (intToTType 1), tlv_length = (intToLength blength), tlv_nested_value = bvalue }
         where
@@ -243,6 +248,25 @@ content p s =
         Nothing -> Nothing
         Just (Name nc) -> Just (Content ((Name nc), p))
 
+-- manifestFromHashes :: Name -> [ByteString] -> Manifest
+-- manifestFromHashes n hashes = do
+--    let pointers = Prelude.map
+--    let hashGroup = ManifestHashGroup
+--     in
+
+manifest :: [String] -> Int -> [Content] -> Maybe Manifest
+manifest s numPointers datas =
+    case (name s) of
+        Nothing -> Nothing
+        Just (Name nc) -> do
+            let rawPackets = Prelude.map Data.Maybe.fromJust (Prelude.map preparePacket (Prelude.map (\x -> Just x) datas))
+            let hashChunks = splitIntoChunks numPointers (Prelude.reverse (Prelude.map SHA.sha256 (Lazy.fromStrict <$> rawPackets)))
+                in
+                    Nothing
+-- TODO: write a function that takes a name and chunks and creates a single manifest
+
+
+
 data FixedHeader = FixedHeader Version PacketType PacketLength deriving(Show)
 
 prependFixedHeader :: Version -> PacketType -> Data.ByteString.ByteString -> Data.ByteString.ByteString
@@ -274,7 +298,7 @@ produceContents [] _ = []
 produceContents _ [] = []
 
 produceContentPackets :: [[String]] -> [[Word8]] -> [Maybe ByteString]
-produceContentPackets n s = preparePacket <$> produceContents n s
+produceContentPackets names payloads = preparePacket <$> produceContents names payloads
 
 producePacketPairs :: [[String]] -> [[Word8]] -> [(Maybe ByteString, Maybe ByteString)]
 producePacketPairs n p = do
@@ -282,3 +306,22 @@ producePacketPairs n p = do
     let contents = produceContentPackets n p
         in
             Prelude.zip interests contents
+
+splitIntoChunks _ [] = []
+splitIntoChunks n s
+    | n > 0 = (Prelude.take n s) : (splitIntoChunks n (Prelude.drop n s))
+    | otherwise = error "Error: the splitIntoChunks parameter must be positive"
+
+produceManifests :: [[String]] -> [ByteString] -> [Maybe Manifest]
+produceManifests names datas = do
+    let hashChunks = splitIntoChunks 2 (Prelude.reverse (Prelude.map SHA.sha256 (Prelude.map Lazy.fromStrict datas)))
+        in
+            -- TODO: use foldl to create a manifest, and insert the new value into the list (hashed), and continue with the creation
+            --Prelude.foldl
+            []
+    -- case (content (Payload p) n) of
+    --     Nothing -> []
+    --     Just (Content msg) -> [Just (Content msg)] ++ (produceManifests ns ps)
+
+produceManifestPackets :: [[String]] -> [ByteString] -> [Maybe ByteString]
+produceManifestPackets names datas = preparePacket <$> produceManifests names datas
