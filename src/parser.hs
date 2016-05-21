@@ -179,22 +179,22 @@ instance Packet Content where
         Just (prependFixedHeader 1 1 (serialize (toTLV (Content (name, payload)))))
     preparePacket Nothing = Nothing
 
-data HashGroupPointer = DataPointer [Word8]
-                       | ManifestPointer [Word8]
+data HashGroupPointer = DataPointer ByteString
+                       | ManifestPointer ByteString
                        deriving (Show)
 
 instance Encoder HashGroupPointer where
-    toTLV (DataPointer bytes) = RawTLV { tlv_type = (intToTType 1), tlv_length = (intToLength blength), tlv_raw_value = bvalue }
-        where
-            bvalue = (Data.ByteString.pack bytes)
-            blength = (Data.ByteString.length bvalue)
-    toTLV (ManifestPointer bytes) = RawTLV { tlv_type = (intToTType 1), tlv_length = (intToLength blength), tlv_raw_value = bvalue }
-        where
-            bvalue = (Data.ByteString.pack bytes)
-            blength = (Data.ByteString.length bvalue)
+    toTLV (DataPointer bytes) = RawTLV { tlv_type = (intToTType 1), tlv_length = (intToLength (Data.ByteString.length bytes)), tlv_raw_value = bytes }
+        -- where
+        --     bvalue = (Data.ByteString.pack bytes)
+        --     blength = (Data.ByteString.length bvalue)
+    toTLV (ManifestPointer bytes) = RawTLV { tlv_type = (intToTType 1), tlv_length = (intToLength (Data.ByteString.length bytes)), tlv_raw_value = bytes }
+        -- where
+        --     bvalue = (Data.ByteString.pack bytes)
+        --     blength = (Data.ByteString.length bvalue)
 
-    encodingSize (DataPointer bytes) = 4 + (Prelude.length bytes)
-    encodingSize (ManifestPointer bytes) = 4 + (Prelude.length bytes)
+    encodingSize (DataPointer bytes) = 4 + (Data.ByteString.length bytes)
+    encodingSize (ManifestPointer bytes) = 4 + (Data.ByteString.length bytes)
 
 data ManifestHashGroup = ManifestHashGroup [HashGroupPointer] deriving (Show)
 
@@ -248,11 +248,10 @@ content p s =
         Nothing -> Nothing
         Just (Name nc) -> Just (Content ((Name nc), p))
 
--- manifestFromHashes :: Name -> [ByteString] -> Manifest
--- manifestFromHashes n hashes = do
---    let pointers = Prelude.map
---    let hashGroup = ManifestHashGroup
---     in
+manifestFromHashes :: Name -> [HashGroupPointer] -> Manifest
+manifestFromHashes n pointers = do
+    let hashGroup = ManifestHashGroup pointers
+        in NamelessManifest [hashGroup]
 
 manifest :: [String] -> Int -> [Content] -> Maybe Manifest
 manifest s numPointers datas =
@@ -260,12 +259,14 @@ manifest s numPointers datas =
         Nothing -> Nothing
         Just (Name nc) -> do
             let rawPackets = Prelude.map Data.Maybe.fromJust (Prelude.map preparePacket (Prelude.map (\x -> Just x) datas))
-            let hashChunks = splitIntoChunks numPointers (Prelude.reverse (Prelude.map SHA.sha256 (Lazy.fromStrict <$> rawPackets)))
+            let hashChunks = Prelude.reverse (Prelude.map SHA.sha256 (Lazy.fromStrict <$> rawPackets))
+            let dataPointers = Prelude.map DataPointer (Prelude.map Lazy.toStrict (Prelude.map SHA.bytestringDigest hashChunks))
+            let pointerChunks = splitIntoChunks numPointers dataPointers
                 in
-                    Nothing
+                    Nothing -- TODO: for each chunk, create a manifest and then add a pointer to the list, and continue
+
 -- TODO: write a function that takes a name and chunks and creates a single manifest
-
-
+-- use it with foldl to generate the single manifest
 
 data FixedHeader = FixedHeader Version PacketType PacketLength deriving(Show)
 
