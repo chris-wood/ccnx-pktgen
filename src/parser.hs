@@ -263,6 +263,7 @@ manifest s numPointers datas =
             let dataPointers = Prelude.map DataPointer (Prelude.map Lazy.toStrict (Prelude.map SHA.bytestringDigest hashChunks))
             let pointerChunks = splitIntoChunks numPointers dataPointers
                 in
+                    
                     Nothing -- TODO: for each chunk, create a manifest and then add a pointer to the list, and continue
 
 -- TODO: write a function that takes a name and chunks and creates a single manifest
