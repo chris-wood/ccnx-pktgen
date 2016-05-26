@@ -236,6 +236,9 @@ instance Packet Manifest where
         Just (prependFixedHeader 1 1 (serialize (toTLV (NamelessManifest body))))
     preparePacket Nothing = Nothing
 
+-- We have three types of messages: Interest, Content Object, and (FLIC) Manifest
+data Message = Interest | ContentObject | Manifest deriving (Show)
+
 interest :: [String] -> Maybe Interest
 interest s =
     case (name s) of
@@ -248,23 +251,54 @@ content p s =
         Nothing -> Nothing
         Just (Name nc) -> Just (Content ((Name nc), p))
 
-manifestFromHashes :: Name -> [HashGroupPointer] -> Manifest
-manifestFromHashes n pointers = do
+messagesToHashDigests :: [Message] -> [ByteString]
+messagesToHashDigests messages = do
+    let rawPackets = Prelude.map Data.Maybe.fromJust (Prelude.map preparePacket (Prelude.map (\x -> Just x) messages))
+    let hashChunks = Prelude.reverse (Prelude.map SHA.sha256 (Lazy.fromStrict <$> rawPackets))
+    in
+        Prelude.map Lazy.toString (Prelude.map SHA.bytestringDigest hashChunks)
+
+manifestFromPointers :: [HashGroupPointer] -> Manifest
+manifestFromPointers pointers = do
     let hashGroup = ManifestHashGroup pointers
         in NamelessManifest [hashGroup]
 
-manifest :: [String] -> Int -> [Content] -> Maybe Manifest
-manifest s numPointers datas =
+namedManifestFromPointers :: Name -> [HashGroupPointer] -> Manifest
+namedManifestFromPointers n pointers = do
+    let hashGroup = ManifestHashGroup pointers 
+        in Manifest n [hashGroup]
+
+balancedManifestTreeFromPointers :: [Message] -> Name -> Int -> [HashGroupPointer] -> [Message]
+balancedManifestTreeFromPointers messageList n numPointers pointers
+    -- Base case: when we don't need to extend the tree to add more pointers
+    | length pointers < numPointers = do
+        let manifestNode = Prelude.map namedManifestFromPointers n pointers
+        in
+            messageList ++ manifestNode
+
+    -- Recurse and add more pointers to the tree
+    | otherwise = do
+        let pointerChunks = splitIntoChunks numPointers pointers
+
+        -- Note: this will build a tree of manifests
+        let manifestNodes = Prelude.map manifestFromPointers pointerChunks
+        let rawPackets = Prelude.map Data.Maybe.fromJust (Prelude.map preparePacket (Prelude.map (\x -> Just x) manifestNodes))
+        let hashChunks = Prelude.reverse (Prelude.map SHA.sha256 (Lazy.fromStrict <$> rawPackets))
+        let manifestPointers = Prelude.map ManifestPointer (Prelude.map Lazy.toStrict (Prelude.map SHA.bytestringDigest hashChunks))
+            in
+                balancedManifestTreeFromPointers (messageList ++ manifestNodes) n numPointers manifestPointers
+
+-- TODO: extract the data pointer generation into a separate function
+balancedManifestTree :: [String] -> Int -> [Content] -> [Message]
+balancedManifestTree s numPointers datas =
     case (name s) of
         Nothing -> Nothing
         Just (Name nc) -> do
             let rawPackets = Prelude.map Data.Maybe.fromJust (Prelude.map preparePacket (Prelude.map (\x -> Just x) datas))
             let hashChunks = Prelude.reverse (Prelude.map SHA.sha256 (Lazy.fromStrict <$> rawPackets))
             let dataPointers = Prelude.map DataPointer (Prelude.map Lazy.toStrict (Prelude.map SHA.bytestringDigest hashChunks))
-            let pointerChunks = splitIntoChunks numPointers dataPointers
-                in
-                    
-                    Nothing -- TODO: for each chunk, create a manifest and then add a pointer to the list, and continue
+            in
+                balancedManifestTreeFromPointers [] (Name nc) numPointers dataPointers    
 
 -- TODO: write a function that takes a name and chunks and creates a single manifest
 -- use it with foldl to generate the single manifest
