@@ -127,14 +127,14 @@ data ValidationPayload = ValidationPayload [Word8] deriving(Show)
 data ValidationAlg = ValidationAlg VaidationType ValidationDependentData deriving(Show)
 data Validation = Validation ValidationAlg ValidationPayload deriving(Show)
 
-data Interest = Interest Name
+data Interest = SimpleInterest Name
                 | InterestWithPayload NamedPayload
                 | SignedInterest NamedPayload Validation
                 deriving(Show)
 
 instance Encoder Interest where
     -- TL type is 1
-    toTLV (Interest name) = NestedTLV { tlv_type = (intToTType 1), tlv_length = (intToLength blength), tlv_nested_value = bvalue }
+    toTLV (SimpleInterest name) = NestedTLV { tlv_type = (intToTType 1), tlv_length = (intToLength blength), tlv_nested_value = bvalue }
         where
             bvalue = [(toTLV name)]
             blength = (encodingSize name)
@@ -144,24 +144,24 @@ instance Encoder Interest where
             bvalue = [(toTLV name), (toTLV payload)]
             blength = (sum [(encodingSize name), (encodingSize payload)])
 
-    encodingSize (Interest name) = 4 + (encodingSize name)
+    encodingSize (SimpleInterest name) = 4 + (encodingSize name)
     encodingSize (InterestWithPayload (name, payload)) = 4 + (sum [(encodingSize name), (encodingSize payload)])
 
 instance Packet Interest where
-    preparePacket (Just (Interest name)) =
-        Just (prependFixedHeader 1 0 (serialize (toTLV (Interest name))))
+    preparePacket (Just (SimpleInterest name)) =
+        Just (prependFixedHeader 1 0 (serialize (toTLV (SimpleInterest name))))
     preparePacket (Just (InterestWithPayload (name, payload))) =
         Just (prependFixedHeader 1 0 (serialize (toTLV (InterestWithPayload (name, payload)))))
     preparePacket Nothing = Nothing
 
 data Content = NamelessContent Payload
-               | Content NamedPayload
+               | SimpleContent NamedPayload
                | SignedContent NamedPayload Validation
                deriving (Show)
 
 instance Encoder Content where
     -- TL type is 2
-    toTLV (Content (name, payload)) = NestedTLV { tlv_type = (intToTType 2), tlv_length = (intToLength blength), tlv_nested_value = bvalue }
+    toTLV (SimpleContent (name, payload)) = NestedTLV { tlv_type = (intToTType 2), tlv_length = (intToLength blength), tlv_nested_value = bvalue }
         where
             bvalue = [(toTLV name), (toTLV payload)]
             blength = (sum [(encodingSize name), (encodingSize payload)])
@@ -171,12 +171,12 @@ instance Encoder Content where
             bvalue = [(toTLV payload)]
             blength = (encodingSize payload)
 
-    encodingSize (Content (name, payload)) = 4 + (sum [(encodingSize name), (encodingSize payload)])
+    encodingSize (SimpleContent (name, payload)) = 4 + (sum [(encodingSize name), (encodingSize payload)])
     encodingSize (NamelessContent payload) = 4 + (encodingSize payload)
 
 instance Packet Content where
-    preparePacket (Just (Content (name, payload))) =
-        Just (prependFixedHeader 1 1 (serialize (toTLV (Content (name, payload)))))
+    preparePacket (Just (SimpleContent (name, payload))) =
+        Just (prependFixedHeader 1 1 (serialize (toTLV (SimpleContent (name, payload)))))
     preparePacket Nothing = Nothing
 
 data HashGroupPointer = DataPointer ByteString
@@ -207,7 +207,7 @@ instance Encoder ManifestHashGroup where
 
 type ManifestBody = [ManifestHashGroup]
 
-data Manifest = Manifest Name ManifestBody
+data Manifest = SimpleManifest Name ManifestBody
                 | NamelessManifest ManifestBody
                 | SignedManifest Name ManifestBody Validation
                 deriving (Show)
@@ -215,7 +215,7 @@ data Manifest = Manifest Name ManifestBody
 
 
 instance Encoder Manifest where
-    toTLV (Manifest name body) = NestedTLV { tlv_type = (intToTType 1), tlv_length = (intToLength blength), tlv_nested_value = bvalue }
+    toTLV (SimpleManifest name body) = NestedTLV { tlv_type = (intToTType 1), tlv_length = (intToLength blength), tlv_nested_value = bvalue }
         where
             bvalue = [(toTLV name)] ++ (Prelude.map toTLV body)
             blength = sum ([(encodingSize name)] ++ (Prelude.map encodingSize body))
@@ -226,37 +226,43 @@ instance Encoder Manifest where
 -- TODO: implement the validation encoder
 --    toTLV (SignedManifest name body validation)
 
-    encodingSize (Manifest name body) = 4 + (sum ([(encodingSize name)] ++ (Prelude.map encodingSize body)))
+    encodingSize (SimpleManifest name body) = 4 + (sum ([(encodingSize name)] ++ (Prelude.map encodingSize body)))
     encodingSize (NamelessManifest body) = 4 + (sum (Prelude.map encodingSize body))
 
 instance Packet Manifest where
-    preparePacket (Just (Manifest name body)) =
-        Just (prependFixedHeader 1 1 (serialize (toTLV (Manifest name body))))
+    preparePacket (Just (SimpleManifest name body)) =
+        Just (prependFixedHeader 1 1 (serialize (toTLV (SimpleManifest name body))))
     preparePacket (Just (NamelessManifest body)) =
         Just (prependFixedHeader 1 1 (serialize (toTLV (NamelessManifest body))))
     preparePacket Nothing = Nothing
 
 -- We have three types of messages: Interest, Content Object, and (FLIC) Manifest
-data Message = Interest | ContentObject | Manifest deriving (Show)
+data Message = IMessage Interest | CMessage Content | MMessage Manifest deriving (Show)
+instance Packet Message where
+    preparePacket (Just (IMessage interest)) = preparePacket (Just interest)
+    preparePacket (Just (CMessage content)) = preparePacket (Just content)
+    preparePacket (Just (MMessage manifest)) = preparePacket (Just manifest)
+    preparePacket Nothing = Nothing
+--type Message = Interest | Content | Manifest
 
 interest :: [String] -> Maybe Interest
 interest s =
     case (name s) of
         Nothing -> Nothing
-        Just (Name nc) -> Just (Interest (Name nc))
+        Just (Name nc) -> Just (SimpleInterest (Name nc))
 
 content :: Payload -> [String] -> Maybe Content
 content p s =
     case (name s) of
         Nothing -> Nothing
-        Just (Name nc) -> Just (Content ((Name nc), p))
+        Just (Name nc) -> Just (SimpleContent ((Name nc), p))
 
 messagesToHashDigests :: [Message] -> [ByteString]
 messagesToHashDigests messages = do
     let rawPackets = Prelude.map Data.Maybe.fromJust (Prelude.map preparePacket (Prelude.map (\x -> Just x) messages))
     let hashChunks = Prelude.reverse (Prelude.map SHA.sha256 (Lazy.fromStrict <$> rawPackets))
-    in
-        Prelude.map Lazy.toString (Prelude.map SHA.bytestringDigest hashChunks)
+        in
+            Prelude.map Lazy.toStrict (Prelude.map SHA.bytestringDigest hashChunks)
 
 manifestFromPointers :: [HashGroupPointer] -> Manifest
 manifestFromPointers pointers = do
@@ -266,15 +272,15 @@ manifestFromPointers pointers = do
 namedManifestFromPointers :: Name -> [HashGroupPointer] -> Manifest
 namedManifestFromPointers n pointers = do
     let hashGroup = ManifestHashGroup pointers 
-        in Manifest n [hashGroup]
+        in SimpleManifest n [hashGroup]
 
 balancedManifestTreeFromPointers :: [Message] -> Name -> Int -> [HashGroupPointer] -> [Message]
 balancedManifestTreeFromPointers messageList n numPointers pointers
     -- Base case: when we don't need to extend the tree to add more pointers
-    | length pointers < numPointers = do
-        let manifestNode = Prelude.map namedManifestFromPointers n pointers
-        in
-            messageList ++ manifestNode
+    | Prelude.length pointers < numPointers = do
+        let manifestNode = MMessage (namedManifestFromPointers n pointers)
+            in
+                messageList ++ [manifestNode]
 
     -- Recurse and add more pointers to the tree
     | otherwise = do
@@ -286,19 +292,19 @@ balancedManifestTreeFromPointers messageList n numPointers pointers
         let hashChunks = Prelude.reverse (Prelude.map SHA.sha256 (Lazy.fromStrict <$> rawPackets))
         let manifestPointers = Prelude.map ManifestPointer (Prelude.map Lazy.toStrict (Prelude.map SHA.bytestringDigest hashChunks))
             in
-                balancedManifestTreeFromPointers (messageList ++ manifestNodes) n numPointers manifestPointers
+                balancedManifestTreeFromPointers (messageList ++ (Prelude.map MMessage manifestNodes)) n numPointers manifestPointers
 
 -- TODO: extract the data pointer generation into a separate function
 balancedManifestTree :: [String] -> Int -> [Content] -> [Message]
 balancedManifestTree s numPointers datas =
     case (name s) of
-        Nothing -> Nothing
+        Nothing -> []
         Just (Name nc) -> do
             let rawPackets = Prelude.map Data.Maybe.fromJust (Prelude.map preparePacket (Prelude.map (\x -> Just x) datas))
             let hashChunks = Prelude.reverse (Prelude.map SHA.sha256 (Lazy.fromStrict <$> rawPackets))
             let dataPointers = Prelude.map DataPointer (Prelude.map Lazy.toStrict (Prelude.map SHA.bytestringDigest hashChunks))
-            in
-                balancedManifestTreeFromPointers [] (Name nc) numPointers dataPointers    
+                in
+                    balancedManifestTreeFromPointers [] (Name nc) numPointers dataPointers
 
 -- TODO: write a function that takes a name and chunks and creates a single manifest
 -- use it with foldl to generate the single manifest
@@ -319,7 +325,7 @@ produceInterests :: [[String]] -> [Maybe Interest]
 produceInterests (s:xs) =
     case (interest s) of
         Nothing -> []
-        Just (Interest msg) -> [Just (Interest msg)] ++ (produceInterests xs)
+        Just (SimpleInterest msg) -> [Just (SimpleInterest msg)] ++ (produceInterests xs)
 produceInterests [] = []
 
 produceInterestPackets :: [[String]] -> [Maybe ByteString]
@@ -329,7 +335,7 @@ produceContents :: [[String]] -> [[Word8]] -> [Maybe Content]
 produceContents (n:ns) (p:ps) =
     case (content (Payload p) n) of
         Nothing -> []
-        Just (Content msg) -> [Just (Content msg)] ++ (produceContents ns ps)
+        Just (SimpleContent msg) -> [Just (SimpleContent msg)] ++ (produceContents ns ps)
 produceContents [] _ = []
 produceContents _ [] = []
 
