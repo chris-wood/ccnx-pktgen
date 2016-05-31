@@ -1,4 +1,4 @@
-module Parser (
+module CCNxPacketGenerator (
     produceInterestPackets
     , produceInterests
     , produceContents
