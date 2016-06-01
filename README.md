@@ -1,5 +1,7 @@
 # Overview
 
+[![Build Status](https://travis-ci.org/chris-wood/ccnx-pktgen.svg?branch=master)](https://travis-ci.org/chris-wood/ccnx-pktgen)
+
 ccnx-pktgen is a CCNx packet grammar parser and generator that converts 
 grammar specifications to raw bytes. It can also be used to quickly create
 packets represented in S-expression form. The tool is meant to be a general
