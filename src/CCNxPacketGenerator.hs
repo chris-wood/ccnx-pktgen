@@ -260,7 +260,7 @@ content p s =
 messagesToHashDigests :: [Message] -> [ByteString]
 messagesToHashDigests messages = do
     let rawPackets = Prelude.map Data.Maybe.fromJust (Prelude.map preparePacket (Prelude.map (\x -> Just x) messages))
-    let hashChunks = Prelude.reverse (Prelude.map SHA.sha256 (Lazy.fromStrict <$> rawPackets))
+    let hashChunks = Prelude.reverse (Prelude.map SHA.sha256 (fmap Lazy.fromStrict rawPackets))
         in
             Prelude.map Lazy.toStrict (Prelude.map SHA.bytestringDigest hashChunks)
 
@@ -289,7 +289,7 @@ balancedManifestTreeFromPointers messageList n numPointers pointers
         -- Note: this will build a tree of manifests
         let manifestNodes = Prelude.map manifestFromPointers pointerChunks
         let rawPackets = Prelude.map Data.Maybe.fromJust (Prelude.map preparePacket (Prelude.map (\x -> Just x) manifestNodes))
-        let hashChunks = Prelude.reverse (Prelude.map SHA.sha256 (Lazy.fromStrict <$> rawPackets))
+        let hashChunks = Prelude.reverse (Prelude.map SHA.sha256 (fmap Lazy.fromStrict rawPackets))
         let manifestPointers = Prelude.map ManifestPointer (Prelude.map Lazy.toStrict (Prelude.map SHA.bytestringDigest hashChunks))
             in
                 balancedManifestTreeFromPointers (messageList ++ (Prelude.map MMessage manifestNodes)) n numPointers manifestPointers
@@ -301,7 +301,7 @@ balancedManifestTree s numPointers datas =
         Nothing -> []
         Just (Name nc) -> do
             let rawPackets = Prelude.map Data.Maybe.fromJust (Prelude.map preparePacket (Prelude.map (\x -> Just x) datas))
-            let hashChunks = Prelude.reverse (Prelude.map SHA.sha256 (Lazy.fromStrict <$> rawPackets))
+            let hashChunks = Prelude.reverse (Prelude.map SHA.sha256 (fmap Lazy.fromStrict rawPackets))
             let dataPointers = Prelude.map DataPointer (Prelude.map Lazy.toStrict (Prelude.map SHA.bytestringDigest hashChunks))
                 in
                     balancedManifestTreeFromPointers [] (Name nc) numPointers dataPointers
@@ -329,7 +329,7 @@ produceInterests (s:xs) =
 produceInterests [] = []
 
 produceInterestPackets :: [[String]] -> [Maybe ByteString]
-produceInterestPackets s = preparePacket <$> produceInterests s
+produceInterestPackets s = fmap preparePacket (produceInterests s)
 
 produceContents :: [[String]] -> [[Word8]] -> [Maybe Content]
 produceContents (n:ns) (p:ps) =
@@ -340,7 +340,7 @@ produceContents [] _ = []
 produceContents _ [] = []
 
 produceContentPackets :: [[String]] -> [[Word8]] -> [Maybe ByteString]
-produceContentPackets names payloads = preparePacket <$> produceContents names payloads
+produceContentPackets names payloads = fmap preparePacket (produceContents names payloads)
 
 producePacketPairs :: [[String]] -> [[Word8]] -> [(Maybe ByteString, Maybe ByteString)]
 producePacketPairs n p = do
@@ -366,4 +366,4 @@ produceManifests names datas = do
     --     Just (Content msg) -> [Just (Content msg)] ++ (produceManifests ns ps)
 
 produceManifestPackets :: [[String]] -> [ByteString] -> [Maybe ByteString]
-produceManifestPackets names datas = preparePacket <$> produceManifests names datas
+produceManifestPackets names datas = fmap preparePacket (produceManifests names datas)
