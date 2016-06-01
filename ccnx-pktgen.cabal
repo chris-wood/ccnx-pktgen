@@ -46,9 +46,9 @@ extra-source-files:  README.md
 cabal-version:       >=1.10
 
 
-executable ccnx-pktgen
+executable pktgen
   -- .hs or .lhs file containing the Main module.
-  main-is:             builder.hs
+  main-is:             Builder.hs
 
   --ghc-options:      -O2 -threaded -with-rtsopts=-N -main-is builder
 
