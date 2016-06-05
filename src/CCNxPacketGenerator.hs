@@ -1,9 +1,12 @@
 module CCNxPacketGenerator (
-    produceInterestPackets
+    preparePacket
+    , produceInterestPackets
     , produceInterests
     , produceContents
+    , produceNamelessContents
     , produceContentPackets
     , producePacketPairs
+    , balancedManifestTree
 ) where
 
 import System.IO
@@ -17,6 +20,7 @@ import Data.ByteString.Char8
 import qualified Data.ByteString.Lazy.Char8 as Lazy
 import Data.ByteString
 import qualified Data.Digest.Pure.SHA as SHA
+import Debug.Trace
 
 import Generator
 
@@ -271,19 +275,26 @@ manifestFromPointers pointers = do
 
 namedManifestFromPointers :: Name -> [HashGroupPointer] -> Manifest
 namedManifestFromPointers n pointers = do
-    let hashGroup = ManifestHashGroup pointers 
+    let hashGroup = ManifestHashGroup pointers
         in SimpleManifest n [hashGroup]
+
+splitIntoChunks _ [] = []
+splitIntoChunks n s
+    | n > 0 = (Prelude.take n s) : (splitIntoChunks n (Prelude.drop n s))
+    | otherwise = error "Error: the splitIntoChunks parameter must be positive"
 
 balancedManifestTreeFromPointers :: [Message] -> Name -> Int -> [HashGroupPointer] -> [Message]
 balancedManifestTreeFromPointers messageList n numPointers pointers
     -- Base case: when we don't need to extend the tree to add more pointers
-    | Prelude.length pointers < numPointers = do
+    | Prelude.length pointers < numPointers = trace ("balancedManifestTreeFromPointers leaf") $ do
+        -- System.IO.putStrLn "balancedManifestTreeFromPointers leaf"
         let manifestNode = MMessage (namedManifestFromPointers n pointers)
             in
                 messageList ++ [manifestNode]
 
     -- Recurse and add more pointers to the tree
-    | otherwise = do
+    | otherwise = trace ("balancedManifestTreeFromPointers inner node") $ do
+        -- System.IO.putStrLn "balancedManifestTreeFromPointers inner node"
         let pointerChunks = splitIntoChunks numPointers pointers
 
         -- Note: this will build a tree of manifests
@@ -294,20 +305,17 @@ balancedManifestTreeFromPointers messageList n numPointers pointers
             in
                 balancedManifestTreeFromPointers (messageList ++ (Prelude.map MMessage manifestNodes)) n numPointers manifestPointers
 
--- TODO: extract the data pointer generation into a separate function
 balancedManifestTree :: [String] -> Int -> [Content] -> [Message]
-balancedManifestTree s numPointers datas =
+balancedManifestTree s numPointers datas = trace ("balancedManifestTree start") $
     case (name s) of
         Nothing -> []
         Just (Name nc) -> do
-            let rawPackets = Prelude.map Data.Maybe.fromJust (Prelude.map preparePacket (Prelude.map (\x -> Just x) datas))
-            let hashChunks = Prelude.reverse (Prelude.map SHA.sha256 (fmap Lazy.fromStrict rawPackets))
-            let dataPointers = Prelude.map DataPointer (Prelude.map Lazy.toStrict (Prelude.map SHA.bytestringDigest hashChunks))
+            let rawPackets = trace ("computing rawPackets...") $ Prelude.map Data.Maybe.fromJust (Prelude.map preparePacket (Prelude.map (\x -> Just x) datas))
+            let lazyHashChunks = trace ("computing lazy hashChunks...") $ Prelude.reverse (Prelude.map SHA.sha256 (fmap Lazy.fromStrict rawPackets))
+            let strictHashChunk = trace ("retrieving strict hashChunks...") $  Prelude.map Lazy.toStrict (Prelude.map SHA.bytestringDigest lazyHashChunks)
+            let dataPointers = trace ("constructing dataPointers...") $ Prelude.map DataPointer strictHashChunk
                 in
-                    balancedManifestTreeFromPointers [] (Name nc) numPointers dataPointers
-
--- TODO: write a function that takes a name and chunks and creates a single manifest
--- use it with foldl to generate the single manifest
+                    trace ("jumping into balancedManifestTreeFromPointers...") $ balancedManifestTreeFromPointers [] (Name nc) numPointers dataPointers
 
 data FixedHeader = FixedHeader Version PacketType PacketLength deriving(Show)
 
@@ -339,6 +347,10 @@ produceContents (n:ns) (p:ps) =
 produceContents [] _ = []
 produceContents _ [] = []
 
+produceNamelessContents :: [[Word8]] -> [Content]
+produceNamelessContents (p:ps) = [NamelessContent (Payload p)] ++ (produceNamelessContents ps)
+produceNamelessContents [] = []
+
 produceContentPackets :: [[String]] -> [[Word8]] -> [Maybe ByteString]
 produceContentPackets names payloads = fmap preparePacket (produceContents names payloads)
 
@@ -349,10 +361,9 @@ producePacketPairs n p = do
         in
             Prelude.zip interests contents
 
-splitIntoChunks _ [] = []
-splitIntoChunks n s
-    | n > 0 = (Prelude.take n s) : (splitIntoChunks n (Prelude.drop n s))
-    | otherwise = error "Error: the splitIntoChunks parameter must be positive"
+
+
+
 
 produceManifests :: [[String]] -> [ByteString] -> [Maybe Manifest]
 produceManifests names datas = do

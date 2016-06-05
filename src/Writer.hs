@@ -1,6 +1,7 @@
 module Writer (
     printByteString
     , writeByteString
+    , writeByteStrings
     , writeByteStringPairs
 ) where
 
@@ -22,3 +23,6 @@ writeByteStringPairs f1 f2 (((Just b1), (Just b2)):bs) = do
     writeByteStringPairs f1 f2 bs
 writeByteStringPairs f1 f2 ((_, _):bs) = writeByteStringPairs f1 f2 bs
 writeByteStringPairs f1 f2 [] = return ()
+
+writeByteStrings :: String -> [Maybe ByteString] -> IO ()
+writeByteStrings f b = Prelude.head (Prelude.map (writeByteString f) b)
