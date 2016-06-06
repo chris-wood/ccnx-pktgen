@@ -66,10 +66,10 @@ main = do
             let pmax = read pmax_s
 
             let name = Prelude.head (randomListOfStringStreams (nmin, nmax) (ncmin, ncmax) number (mkStdGen seed))
-            let payloadStream = randomListOfByteArrays (pmin, pmax) number (mkStdGen seed)
+            let payloadStream = Prelude.take number (randomListOfByteArrays (pmin, pmax) number (mkStdGen seed))
 
             let contents = produceNamelessContents payloadStream
-            let manifestMessages = balancedManifestTree name 4096 contents
+            let manifestMessages = balancedManifestTree name 256 contents
             let manifestPackets = Prelude.map preparePacket (Prelude.map Just manifestMessages)
                 in writeByteStrings contentFile manifestPackets
         _ ->

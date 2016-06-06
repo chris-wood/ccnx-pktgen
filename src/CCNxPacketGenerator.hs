@@ -181,6 +181,8 @@ instance Encoder Content where
 instance Packet Content where
     preparePacket (Just (SimpleContent (name, payload))) =
         Just (prependFixedHeader 1 1 (serialize (toTLV (SimpleContent (name, payload)))))
+    preparePacket (Just (NamelessContent payload)) =
+        Just (prependFixedHeader 1 1 (serialize (toTLV (NamelessContent payload))))
     preparePacket Nothing = Nothing
 
 data HashGroupPointer = DataPointer ByteString
@@ -284,17 +286,19 @@ splitIntoChunks n s
     | otherwise = error "Error: the splitIntoChunks parameter must be positive"
 
 balancedManifestTreeFromPointers :: [Message] -> Name -> Int -> [HashGroupPointer] -> [Message]
-balancedManifestTreeFromPointers messageList n numPointers pointers
+balancedManifestTreeFromPointers messageList rootName numPointers pointers
     -- Base case: when we don't need to extend the tree to add more pointers
-    | Prelude.length pointers < numPointers = trace ("balancedManifestTreeFromPointers leaf") $ do
+    | (Prelude.length pointers) < numPointers = do
         -- System.IO.putStrLn "balancedManifestTreeFromPointers leaf"
-        let manifestNode = MMessage (namedManifestFromPointers n pointers)
+        let manifestNode = MMessage (namedManifestFromPointers rootName pointers)
             in
                 messageList ++ [manifestNode]
 
     -- Recurse and add more pointers to the tree
-    | otherwise = trace ("balancedManifestTreeFromPointers inner node") $ do
+    | otherwise = do
         -- System.IO.putStrLn "balancedManifestTreeFromPointers inner node"
+        []
+
         let pointerChunks = splitIntoChunks numPointers pointers
 
         -- Note: this will build a tree of manifests
@@ -303,19 +307,40 @@ balancedManifestTreeFromPointers messageList n numPointers pointers
         let hashChunks = Prelude.reverse (Prelude.map SHA.sha256 (fmap Lazy.fromStrict rawPackets))
         let manifestPointers = Prelude.map ManifestPointer (Prelude.map Lazy.toStrict (Prelude.map SHA.bytestringDigest hashChunks))
             in
-                balancedManifestTreeFromPointers (messageList ++ (Prelude.map MMessage manifestNodes)) n numPointers manifestPointers
+                balancedManifestTreeFromPointers (messageList ++ (Prelude.map MMessage manifestNodes)) rootName numPointers manifestPointers
 
 balancedManifestTree :: [String] -> Int -> [Content] -> [Message]
-balancedManifestTree s numPointers datas = trace ("balancedManifestTree start") $
+balancedManifestTree s numPointers datas =
     case (name s) of
         Nothing -> []
         Just (Name nc) -> do
-            let rawPackets = trace ("computing rawPackets...") $ Prelude.map Data.Maybe.fromJust (Prelude.map preparePacket (Prelude.map (\x -> Just x) datas))
-            let lazyHashChunks = trace ("computing lazy hashChunks...") $ Prelude.reverse (Prelude.map SHA.sha256 (fmap Lazy.fromStrict rawPackets))
-            let strictHashChunk = trace ("retrieving strict hashChunks...") $  Prelude.map Lazy.toStrict (Prelude.map SHA.bytestringDigest lazyHashChunks)
-            let dataPointers = trace ("constructing dataPointers...") $ Prelude.map DataPointer strictHashChunk
-                in
-                    trace ("jumping into balancedManifestTreeFromPointers...") $ balancedManifestTreeFromPointers [] (Name nc) numPointers dataPointers
+            let rawContents = Prelude.map CMessage datas
+            let rawPackets = Prelude.map Data.Maybe.fromJust (Prelude.map preparePacket (Prelude.map (\x -> Just x) datas))
+            let lazyHashChunks = Prelude.reverse (Prelude.map SHA.bytestringDigest (Prelude.map SHA.sha256 (fmap Lazy.fromStrict rawPackets)))
+            let strictHashChunks = Prelude.map Lazy.toStrict lazyHashChunks
+            let dataPointers = Prelude.map DataPointer strictHashChunks
+            balancedManifestTreeFromPointers rawContents (Name nc) numPointers dataPointers
+
+-- stupid test function
+testManifesTree :: [Message]
+testManifesTree = do
+    let seed = 100
+    let number = 1
+    let nmin = 3
+    let nmax = 5
+    let ncmin = 2
+    let ncmax = 5
+    let pmin = 16
+    let pmax = 32
+
+    let payloadStream = Prelude.take number (randomListOfByteArrays (pmin, pmax) number (mkStdGen seed))
+    let contents = produceNamelessContents payloadStream
+
+    balancedManifestTree ["abc","def"] 4096 contents
+
+
+
+
 
 data FixedHeader = FixedHeader Version PacketType PacketLength deriving(Show)
 
