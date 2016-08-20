@@ -7,6 +7,8 @@ module CCNxPacketGenerator (
     , produceContentPackets
     , producePacketPairs
     , balancedManifestTree
+    , createInterest
+    , createContent
 ) where
 
 import System.IO
@@ -108,6 +110,7 @@ type HeaderLength = Word8
 type VaidationType = Word16
 
 type KeyId = [Word8]
+type ContentId = [Word8]
 type Cert = [Word8]
 type PubKey = [Word8]
 type KeyName = Name
@@ -132,6 +135,7 @@ data ValidationAlg = ValidationAlg VaidationType ValidationDependentData derivin
 data Validation = Validation ValidationAlg ValidationPayload deriving(Show)
 
 data Interest = SimpleInterest Name
+                | RestrictedInterest Name (Maybe KeyId) (Maybe ContentId)
                 | InterestWithPayload NamedPayload
                 | SignedInterest NamedPayload Validation
                 deriving(Show)
@@ -154,6 +158,8 @@ instance Encoder Interest where
 instance Packet Interest where
     preparePacket (Just (SimpleInterest name)) =
         Just (prependFixedHeader 1 0 (serialize (toTLV (SimpleInterest name))))
+    preparePacket (Just (RestrictedInterest name (Just keyId) (Just contentId))) =
+        Just (prependFixedHeader 1 0 (serialize (toTLV (RestrictedInterest name (Just keyId) (Just contentId)))))
     preparePacket (Just (InterestWithPayload (name, payload))) =
         Just (prependFixedHeader 1 0 (serialize (toTLV (InterestWithPayload (name, payload)))))
     preparePacket Nothing = Nothing
@@ -251,17 +257,27 @@ instance Packet Message where
     preparePacket Nothing = Nothing
 --type Message = Interest | Content | Manifest
 
-interest :: [String] -> Maybe Interest
-interest s =
+createSimpleInterest :: [String] -> Maybe Interest
+createSimpleInterest s =
     case (name s) of
         Nothing -> Nothing
         Just (Name nc) -> Just (SimpleInterest (Name nc))
 
-content :: Payload -> [String] -> Maybe Content
-content p s =
+createInterest :: [String] -> String -> String -> Maybe Interest
+createInterest nameString "" "" = createSimpleInterest nameString
+createInterest nameString keyId "" = createSimpleInterest nameString
+createInterest nameString "" contentId = createSimpleInterest nameString
+createInterest nameString keyId contentId = createSimpleInterest nameString
+-- XXX: need to create the special cases for these functions
+            
+createContent :: Payload -> [String] -> Maybe Content
+createContent p s =
     case (name s) of
         Nothing -> Nothing
         Just (Name nc) -> Just (SimpleContent ((Name nc), p))
+
+createNamelessContent :: Payload -> Maybe Content
+createNamelessContent p = Just (NamelessContent p)
 
 messagesToHashDigests :: [Message] -> [ByteString]
 messagesToHashDigests messages = do
@@ -338,10 +354,6 @@ testManifesTree = do
 
     balancedManifestTree ["abc","def"] 4096 contents
 
-
-
-
-
 data FixedHeader = FixedHeader Version PacketType PacketLength deriving(Show)
 
 prependFixedHeader :: Version -> PacketType -> Data.ByteString.ByteString -> Data.ByteString.ByteString
@@ -356,7 +368,7 @@ prependFixedHeader pv pt body =
 
 produceInterests :: [[String]] -> [Maybe Interest]
 produceInterests (s:xs) =
-    case (interest s) of
+    case (createSimpleInterest s) of
         Nothing -> []
         Just (SimpleInterest msg) -> [Just (SimpleInterest msg)] ++ (produceInterests xs)
 produceInterests [] = []
@@ -366,7 +378,7 @@ produceInterestPackets s = fmap preparePacket (produceInterests s)
 
 produceContents :: [[String]] -> [[Word8]] -> [Maybe Content]
 produceContents (n:ns) (p:ps) =
-    case (content (Payload p) n) of
+    case (createContent (Payload p) n) of
         Nothing -> []
         Just (SimpleContent msg) -> [Just (SimpleContent msg)] ++ (produceContents ns ps)
 produceContents [] _ = []
