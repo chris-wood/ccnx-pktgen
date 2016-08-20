@@ -24,6 +24,8 @@ import Data.ByteString
 import qualified Data.Digest.Pure.SHA as SHA
 import Debug.Trace
 
+import Numeric (readHex)
+
 import Generator
 
 class Serializer t where
@@ -34,9 +36,6 @@ class Encoder t where
     encodingSize :: t -> Int
 
 data TwoByte = TType Word8 Word8 | Length Word8 Word8 deriving(Show)
-
--- TODO: reduce this into a single function... this is silly
--- TODO: make TType and Length fully-fledged types
 
 intToTType :: Int -> TwoByte
 intToTType x = (TType (fromIntegral (x `shiftR` 8)) (fromIntegral x))
@@ -109,8 +108,6 @@ type PacketLength = Word16
 type HeaderLength = Word8
 type VaidationType = Word16
 
-type KeyId = [Word8]
-type ContentId = [Word8]
 type Cert = [Word8]
 type PubKey = [Word8]
 type KeyName = Name
@@ -123,6 +120,32 @@ instance Encoder Payload where
             blength = (Data.ByteString.length bvalue)
 
     encodingSize (Payload bytes) = 4 + (Data.ByteString.length (Data.ByteString.pack bytes))
+
+data KeyId = KeyId [Word8] deriving(Show)
+instance Encoder KeyId where
+    toTLV (KeyId bytes) = RawTLV { tlv_type = (intToTType 1), tlv_length = (intToLength blength), tlv_raw_value = bvalue }
+        where
+            bvalue = (Data.ByteString.pack bytes)
+            blength = (Data.ByteString.length bvalue)
+
+    encodingSize (KeyId bytes) = 4 + (Data.ByteString.length (Data.ByteString.pack bytes))
+
+data ContentId = ContentId [Word8] deriving(Show)
+instance Encoder ContentId where
+    toTLV (ContentId bytes) = RawTLV { tlv_type = (intToTType 1), tlv_length = (intToLength blength), tlv_raw_value = bvalue }
+        where
+            bvalue = (Data.ByteString.pack bytes)
+            blength = (Data.ByteString.length bvalue)
+
+    encodingSize (ContentId bytes) = 4 + (Data.ByteString.length (Data.ByteString.pack bytes))
+
+createKeyId :: [Char] -> Maybe KeyId
+createKeyId string = Just (KeyId (stringToBytes string))
+--createKeyId "" = Nothing
+
+createContentId :: [Char] -> Maybe ContentId
+createContentId string = Just (ContentId (stringToBytes string))
+--createContentId "" = Nothing
 
 class Packet t where
     preparePacket :: Maybe t -> Maybe Data.ByteString.ByteString
@@ -141,19 +164,35 @@ data Interest = SimpleInterest Name
                 deriving(Show)
 
 instance Encoder Interest where
-    -- TL type is 1
     toTLV (SimpleInterest name) = NestedTLV { tlv_type = (intToTType 1), tlv_length = (intToLength blength), tlv_nested_value = bvalue }
         where
             bvalue = [(toTLV name)]
             blength = (encodingSize name)
-    -- TL type is 1
     toTLV (InterestWithPayload (name, payload)) = NestedTLV { tlv_type = (intToTType 1), tlv_length = (intToLength blength), tlv_nested_value = bvalue }
         where
             bvalue = [(toTLV name), (toTLV payload)]
             blength = (sum [(encodingSize name), (encodingSize payload)])
 
+    toTLV (RestrictedInterest name Nothing Nothing) = toTLV (SimpleInterest name)
+    toTLV (RestrictedInterest name (Just keyId) Nothing) =  NestedTLV { tlv_type = (intToTType 1), tlv_length = (intToLength blength), tlv_nested_value = bvalue }
+        where
+            bvalue = [(toTLV name), (toTLV keyId)]
+            blength = (sum [(encodingSize name), (encodingSize keyId)])
+    toTLV (RestrictedInterest name Nothing (Just contentId)) = NestedTLV { tlv_type = (intToTType 1), tlv_length = (intToLength blength), tlv_nested_value = bvalue }
+        where
+            bvalue = [(toTLV name), (toTLV contentId)]
+            blength = (sum [(encodingSize name), (encodingSize contentId)])
+    toTLV (RestrictedInterest name (Just keyId) (Just contentId)) = NestedTLV { tlv_type = (intToTType 1), tlv_length = (intToLength blength), tlv_nested_value = bvalue }
+        where
+            bvalue = [(toTLV name), (toTLV keyId), (toTLV contentId)]
+            blength = (sum [(encodingSize name), (encodingSize keyId), (encodingSize contentId)])
+            
     encodingSize (SimpleInterest name) = 4 + (encodingSize name)
     encodingSize (InterestWithPayload (name, payload)) = 4 + (sum [(encodingSize name), (encodingSize payload)])
+    encodingSize (RestrictedInterest name Nothing Nothing) = 4 + (encodingSize name)
+    encodingSize (RestrictedInterest name (Just keyId) Nothing) = 4 + (sum [(encodingSize name), (encodingSize keyId)])
+    encodingSize (RestrictedInterest name Nothing (Just contentId)) = 4 + (sum [(encodingSize name), (encodingSize contentId)])
+    encodingSize (RestrictedInterest name (Just keyId) (Just contentId)) = 4 + (sum [(encodingSize name), (encodingSize keyId), (encodingSize contentId)])
 
 instance Packet Interest where
     preparePacket (Just (SimpleInterest name)) =
@@ -263,12 +302,20 @@ createSimpleInterest s =
         Nothing -> Nothing
         Just (Name nc) -> Just (SimpleInterest (Name nc))
 
+-- Helper 
+stringToByte :: [Char] -> Word8
+stringToByte string = fromIntegral (fst ((readHex string) !! 0))
+
+stringToBytes :: [Char] -> [Word8]
+stringToBytes string 
+    | Prelude.length string > 2 = [(stringToByte (Prelude.take 2 string))] ++ (stringToBytes (Prelude.drop 2 string))
+    | otherwise = [(stringToByte (Prelude.take 2 string))]
+
 createInterest :: [String] -> String -> String -> Maybe Interest
-createInterest nameString "" "" = createSimpleInterest nameString
-createInterest nameString keyId "" = createSimpleInterest nameString
-createInterest nameString "" contentId = createSimpleInterest nameString
-createInterest nameString keyId contentId = createSimpleInterest nameString
--- XXX: need to create the special cases for these functions
+createInterest nameString keyId contentId = 
+    case (name nameString) of
+        Nothing -> Nothing
+        Just (Name nc) -> Just (RestrictedInterest (Name nc) (createKeyId  keyId) (createContentId contentId))
             
 createContent :: Payload -> [String] -> Maybe Content
 createContent p s =
