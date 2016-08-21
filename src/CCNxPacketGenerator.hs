@@ -197,8 +197,8 @@ instance Encoder Interest where
 instance Packet Interest where
     preparePacket (Just (SimpleInterest name)) =
         Just (prependFixedHeader 1 0 (serialize (toTLV (SimpleInterest name))))
-    preparePacket (Just (RestrictedInterest name (Just keyId) (Just contentId))) =
-        Just (prependFixedHeader 1 0 (serialize (toTLV (RestrictedInterest name (Just keyId) (Just contentId)))))
+    preparePacket (Just (RestrictedInterest name keyId contentId)) =
+        Just (prependFixedHeader 1 0 (serialize (toTLV (RestrictedInterest name keyId contentId))))
     preparePacket (Just (InterestWithPayload (name, payload))) =
         Just (prependFixedHeader 1 0 (serialize (toTLV (InterestWithPayload (name, payload)))))
     preparePacket Nothing = Nothing
