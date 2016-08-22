@@ -7,6 +7,7 @@ import Data.Bits
 import Data.Word
 import Data.ByteString
 import Data.ByteString.Char8
+import Data.List.Split
 
 -- runhaskell builder.hs content output 100 1 3 5 2 5 256 4096
 -- runhaskell builder.hs manifest output 100 1 3 5 2 5 256 4096
@@ -25,11 +26,11 @@ main :: IO ()
 main = do
     args <- getArgs
     case args of
-        nameString:hashString:keyIdString -> do
-            -- XXX: need to split nameString up by '/' character
-            let interest = createInterest nameString keyIdString hashString
-            let packet = preparePacket interest
+        nameString:keyIdString:hashString:rest -> do
+            let interest = createInterest (Prelude.drop 1 (splitOn "/" nameString)) keyIdString hashString
                 in
-                    print packet
+                    case preparePacket interest of
+                        Nothing -> Prelude.putStrLn ""
+                        Just wireFormat -> Data.ByteString.Char8.putStrLn wireFormat
         _ ->
             usage
