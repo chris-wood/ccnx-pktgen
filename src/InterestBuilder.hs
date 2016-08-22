@@ -14,7 +14,7 @@ import Data.ByteString.Char8
 usage :: IO ()
 usage = do
     Prelude.putStrLn ""
-    Prelude.putStrLn "usage: runhaskell ContentBuilder.hs <name> <keyid> <hash>"
+    Prelude.putStrLn "usage: runhaskell InterestBuilder.hs <name> <keyid> <hash>"
     Prelude.putStrLn ""
     Prelude.putStrLn "    name     = data name"
     Prelude.putStrLn "    keyid    = data key ID"
@@ -31,8 +31,5 @@ main = do
             let packet = preparePacket interest
                 in
                     print packet
-
-        -- case for "nil" in place of keyid
-        
         _ ->
             usage
