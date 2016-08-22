@@ -294,7 +294,6 @@ instance Packet Message where
     preparePacket (Just (CMessage content)) = preparePacket (Just content)
     preparePacket (Just (MMessage manifest)) = preparePacket (Just manifest)
     preparePacket Nothing = Nothing
---type Message = Interest | Content | Manifest
 
 createSimpleInterest :: [String] -> Maybe Interest
 createSimpleInterest s =

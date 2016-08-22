@@ -9,9 +9,6 @@ import Data.ByteString
 import Data.ByteString.Char8
 import Data.List.Split
 
--- runhaskell builder.hs content output 100 1 3 5 2 5 256 4096
--- runhaskell builder.hs manifest output 100 1 3 5 2 5 256 4096
-
 usage :: IO ()
 usage = do
     Prelude.putStrLn ""
@@ -31,6 +28,6 @@ main = do
                 in
                     case preparePacket interest of
                         Nothing -> Prelude.putStrLn ""
-                        Just wireFormat -> Data.ByteString.Char8.putStrLn wireFormat
+                        Just wireFormat -> Data.ByteString.putStrLn wireFormat
         _ ->
             usage
