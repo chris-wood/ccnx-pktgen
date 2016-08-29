@@ -59,7 +59,7 @@ executable pktgen
   -- other-extensions:
 
   -- Other library packages from which modules are imported.
-  build-depends: base, text, bytestring, SHA, random
+  build-depends: base, text, bytestring, SHA, random, split
 
 --Data.Text, Data.ByteString.Lazy.Char8, Data.Digest.Pure.SHA, System.Random, Data.ByteString, Data.ByteString.Char8
 

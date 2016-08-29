@@ -140,12 +140,14 @@ instance Encoder ContentId where
     encodingSize (ContentId bytes) = 4 + (Data.ByteString.length (Data.ByteString.pack bytes))
 
 createKeyId :: [Char] -> Maybe KeyId
-createKeyId string = Just (KeyId (stringToBytes string))
---createKeyId "" = Nothing
+createKeyId string 
+    | Prelude.length string > 0 = Just (KeyId (stringToBytes string))
+    | otherwise = Nothing
 
 createContentId :: [Char] -> Maybe ContentId
-createContentId string = Just (ContentId (stringToBytes string))
---createContentId "" = Nothing
+createContentId string 
+    | Prelude.length string > 0 = Just (ContentId (stringToBytes string))
+    | otherwise = Nothing
 
 class Packet t where
     preparePacket :: Maybe t -> Maybe Data.ByteString.ByteString
@@ -262,8 +264,6 @@ data Manifest = SimpleManifest Name ManifestBody
                 | NamelessManifest ManifestBody
                 | SignedManifest Name ManifestBody Validation
                 deriving (Show)
-
-
 
 instance Encoder Manifest where
     toTLV (SimpleManifest name body) = NestedTLV { tlv_type = (intToTType 1), tlv_length = (intToLength blength), tlv_nested_value = bvalue }
