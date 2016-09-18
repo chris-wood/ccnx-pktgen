@@ -28,6 +28,6 @@ main = do
                 in
                     case preparePacket interest of
                         Nothing -> Prelude.putStrLn ""
-                        Just wireFormat -> Data.ByteString.putStrLn wireFormat
+                        Just wireFormat -> Data.ByteString.Char8.putStrLn wireFormat
         _ ->
             usage

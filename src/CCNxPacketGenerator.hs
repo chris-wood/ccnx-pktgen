@@ -9,6 +9,7 @@ module CCNxPacketGenerator (
     , balancedManifestTree
     , createInterest
     , createContent
+    , createPayload
 ) where
 
 import System.IO
@@ -112,7 +113,7 @@ type Cert = [Word8]
 type PubKey = [Word8]
 type KeyName = Name
 
-data Payload = Payload { bytes :: [Word8] } deriving(Show)
+data Payload = Payload [Word8] deriving(Show)
 instance Encoder Payload where
     toTLV (Payload bytes) = RawTLV { tlv_type = (intToTType 1), tlv_length = (intToLength blength), tlv_raw_value = bvalue }
         where
@@ -324,6 +325,9 @@ createContent p s =
 
 createNamelessContent :: Payload -> Maybe Content
 createNamelessContent p = Just (NamelessContent p)
+
+createPayload :: [Word8] -> Payload
+createPayload d = Payload d
 
 messagesToHashDigests :: [Message] -> [ByteString]
 messagesToHashDigests messages = do
